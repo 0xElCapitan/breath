@@ -1,0 +1,13 @@
+{
+  "name": "breath",
+  "version": "0.1.0",
+  "description": "Air quality intelligence construct for the Echelon prediction market framework",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/breath.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "AGPL-3.0"
+}

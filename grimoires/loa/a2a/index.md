@@ -1,40 +1,17 @@
-# Sprint Status Index
+# BREATH — Sprint Index
 
-## Cycle 041: Vision-Aware Planning — Creative Agency for AI Peers
+| Sprint | Global ID | Label | Status | Report |
+|--------|-----------|-------|--------|--------|
+| sprint-1 | 1 | Processor Core | COMPLETED | [reviewer.md](sprint-1/reviewer.md) |
+| sprint-2 | 2 | Oracle Layer | COMPLETED | [reviewer.md](sprint-2/reviewer.md) |
+| sprint-3 | 3 | Theatre + RLMF | COMPLETED | [reviewer.md](sprint-3/reviewer.md) |
+| sprint-4 | 4 | Integration + Ship | in_progress | [reviewer.md](sprint-4/reviewer.md) |
 
-| Sprint | Global ID | Status | Phase |
-|--------|-----------|--------|-------|
-| Sprint 1 | 74 | COMPLETED | — |
-| Sprint 2 | 75 | COMPLETED | audit: APPROVED |
-| Sprint 3 | 76 | COMPLETED | audit: APPROVED |
+## Test Totals
 
-## Cycle 039: Two-Pass Bridge Review
-
-| Sprint | Global ID | Status | Phase |
-|--------|-----------|--------|-------|
-| Sprint 1 | 63 | COMPLETED | — |
-| Sprint 2 | 64 | COMPLETED | — |
-| Sprint 3 | 65 | COMPLETED | — |
-| Sprint 4 | 66 | COMPLETED | — |
-| Sprint 5 | 67 | COMPLETED | — |
-| Sprint 6 | 68 | COMPLETED | — |
-| Sprint 7 | 69 | COMPLETED | — |
-| Sprint 8 | 70 | COMPLETED | audit: APPROVED |
-| Sprint 9 | 71 | COMPLETED | review: PENDING |
-
-## Cycle 038: Organizational Memory Sovereignty — Three-Zone State Architecture
-
-| Sprint | Global ID | Status | Phase |
-|--------|-----------|--------|-------|
-| Sprint 1 | 57 | COMPLETED | — |
-| Sprint 2 | 58 | COMPLETED | — |
-| Sprint 3 | 59 | COMPLETED | — |
-| Sprint 4 | 60 | COMPLETED | — |
-| Sprint 5 | 61 | COMPLETED | — |
-| Sprint 6 | 62 | COMPLETED | — |
-
-## Cycle 037: Bridgebuilder Deep Review — Architectural Fixes
-
-| Sprint | Global ID | Status | Phase |
-|--------|-----------|--------|-------|
-| Sprint 1 | 56 | COMPLETED | — |
+| Sprint | Tests | Pass | Fail |
+|--------|-------|------|------|
+| sprint-1 | 61 | 61 | 0 |
+| sprint-2 | 80 | 80 | 0 |
+| sprint-3 | 18 | 18 | 0 |
+| sprint-4 | 6 | 6 | 0 |

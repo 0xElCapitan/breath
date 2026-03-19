@@ -1,249 +1,569 @@
-# PRD: Community Feedback — Review Pipeline Hardening
+# BREATH — Product Requirements Document
 
-**Cycle**: cycle-048
-**Created**: 2026-02-28
-**Sources**: Issues #425, #426, #427, #430 (community feedback from zkSoju, gumibera)
-**Flatline Review**: Passed — 8 HIGH_CONSENSUS findings integrated, 0 BLOCKERS
+> **Construct**: Air Quality Intelligence Agent for Echelon
+> **Version**: 0.1.0 (PurpleAir MVP)
+> **Date**: 2026-03-19
+> **Status**: APPROVED FOR ARCHITECTURE
+
+---
 
 ## 1. Problem Statement
 
-The Loa review pipeline has several reliability gaps discovered during real-world usage across loa-constructs (v2.8.0), loa-finn, loa-hounfour, loa-freeside, and loa-dixie. These range from parsing failures that block the review loop (#427.1), to stale state propagation that silently skips quality gates (#430), to a YAML parser bug that disables the Bridgebuilder (#425). Each individually causes friction; together they undermine confidence in the review pipeline as a whole.
+> *Source: grimoires/pub/ALPHA PROMPT.md (design conversation), Phase 1 interview*
 
-> Sources: #427 (zkSoju, loa-constructs cycle-036), #426 (zkSoju), #425 (zkSoju), #430 (gumibera, simstim cycle-018)
+The Echelon prediction market framework runs on OSINT constructs — autonomous agents that ingest real-world data, open prediction markets (Theatres), and export calibrated training data (RLMF certificates). TREMOR proved the pattern on seismic data. CORONA proved it on space weather. Both share a critical property: their data sources are exogenous, ground-truth verifiable, and controlled by authoritative institutions (USGS, NOAA).
 
-## 2. Goals & Success Criteria
+Air quality is the third domain that satisfies all of these properties:
 
-| Goal | Metric | Source |
-|------|--------|--------|
-| GPT review loop completes without false-negative exit codes | All verdict check sites handle both `.verdict` and `.overall_verdict` | #427.1 |
-| Bridgebuilder config parsing works regardless of YAML section ordering | Regex uses `[ \t]+` not `\s+` for section capture | #425 |
-| Flatline readiness validated fresh per cycle | `flatline-readiness.sh` checks all configured providers (incl. Gemini) | #430 |
-| 401 errors surface actual API error message | `lib-curl-fallback.sh` extracts `.error.message` from response body | #426 |
-| Cross-platform `timeout` usage documented and portable | Canonical `run_with_timeout()` in compat-lib.sh, existing ad-hoc implementations migrated | #427.2 |
-| Curl config injection guard standardized | API key validated before writing curl config; all existing sites migrated | #427.4 |
+- **Ground truth oracle**: EPA AirNow publishes AQI data continuously. No human interpretation required. Clean binary resolution (did AQI exceed threshold or not?).
+- **Binary structure**: EPA AQI breakpoints (50/100/150/200/300) create natural threshold gates — the same structure TREMOR uses for magnitude gates.
+- **Fast cycles**: AQI readings update hourly (NowCast updates more frequently). Theatres can resolve in 4–72 hours.
+- **Exogenous**: Predictions don't affect air quality. No reflexivity.
+- **Free data**: EPA AirNow is public API, no cost. PurpleAir is points-based but affordable.
+- **Density**: PurpleAir's 30,000+ global sensors create a dense enough network for sensor-to-sensor corroboration — something seismic networks in sparse regions can't do.
 
-## 3. User Context
+**The gap**: No construct exists to run air quality prediction markets on Echelon. BREATH fills this gap as the third construct in the established TREMOR→CORONA lineage.
 
-**Primary persona**: Loa operator running multi-model review pipelines (simstim, run-bridge, gpt-review) across macOS and Linux.
+**The strategic vision** (captured but deferred to Phase 2): The deeper opportunity is a *meta-construct* — a factory that classifies arbitrary sensor feeds and auto-generates Theatre templates. PurpleAir is the proving ground for this pattern before full generalization.
 
-**Pain points** (from feedback):
-- "Agent carried stale skip decisions without verification" (#430)
-- "Useful approvals that the parser rejected" (#427.1)
-- "Observe 'disabled' error despite `enabled: true` being set" (#425)
-- "Had to curl API directly to see 'Incorrect API key' error" (#426)
+---
 
-## 4. Functional Requirements
+## 2. Product Vision & Mission
 
-### FR-1: GPT Verdict Parsing Resilience (#427.1)
+> *Source: grimoires/pub/ALPHA PROMPT.md (Opus 4.6 + Tobias/Perplexity synthesis)*
 
-**Problem**: The review pipeline checks `.verdict` in multiple locations across the codebase. GPT 5.3-codex returns `.overall_verdict` on re-review iterations, causing exit code 5 (format error). The PRD originally identified only `gpt-review-api.sh` lines 116 and 131, but Flatline review found `.verdict`-only checks in at least 7 locations across 4+ files.
+**Vision**: The canonical air quality intelligence construct on the Echelon Constructs Network — producing the most calibrated, adversarially-resistant AQI prediction training data available.
 
-**Affected files** (Flatline-identified):
-- `gpt-review-api.sh` lines 116, 131 — legacy codex path
-- `lib-curl-fallback.sh` line 318 — terminal verdict validation in `call_api()`
-- `lib-route-table.sh` lines 202, 581 — declarative route table validation
-- `lib/normalize-json.sh` line 250 — `validate_agent_response()` schema check
-- Existing BATS tests in `test-gpt-review-integration.bats` — `.verdict`-only assertions
+**Mission**: BREATH ingests real-time air quality data from PurpleAir (community sensors) and EPA AirNow (reference grade), converts it into structured evidence bundles, runs three Theatre types on air quality outcomes, and exports Brier-scored RLMF training data that can't be produced by cheaper, single-source approaches.
 
-**Fix**:
-- Create centralized `extract_verdict()` helper in `lib/normalize-json.sh`: `jq -r '.verdict // .overall_verdict // "UNKNOWN"'`
-- Apply normalization early in the response pipeline (before any validation)
-- Update all call sites to use the centralized helper
-- Update existing test assertions to use the normalized pattern
+**The product is the calibrated training data. The prediction markets are the factory.**
 
-**Acceptance criteria**:
-- GPT review completes when response contains `.overall_verdict` instead of `.verdict`
-- Existing `.verdict` responses continue to work unchanged
-- All verdict check sites (7+) use centralized `extract_verdict()`
-- BATS test covers both field names through the `call_api()`, `validate_review_result()`, and `validate_agent_response()` paths
-- Existing `test-gpt-review-integration.bats` assertions updated
+**Why PurpleAir first**: 30,000+ sensors, dense urban coverage, public API, real-time PM2.5 data, and natural AQI thresholds from EPA breakpoints. This is the ideal network to prove the BREATH pattern before generalizing to the meta-construct.
 
-**Implementation order**: Implement AFTER FR-4 (both modify `lib-curl-fallback.sh`)
+---
 
-### FR-2: Bridgebuilder YAML Parser Fix (#425)
+## 3. Goals & Success Metrics
 
-**Problem**: `config.ts` line 189 regex `/^bridgebuilder:\s*\n((?:\s+.+\n?)*)/m` uses `\s+` which matches newlines, causing capture to bleed through all subsequent YAML sections. Last `enabled: false` from any later section overwrites bridgebuilder's `enabled: true`.
+### MVP Goals (v0.1.0)
 
-**Context** (Flatline-clarified): The upstream Loa repo's `.loa.config.yaml` has no top-level `bridgebuilder:` section — it has `bridgebuilder_design_review:` and `run_bridge.bridgebuilder:`. The bug manifests in downstream repos (loa-constructs, loa-finn, etc.) that DO have standalone `bridgebuilder:` sections. The regex's `^` in multiline mode matches any line start, so it could also false-match `bridgebuilder_design_review:` as a prefix. The existing `config.test.ts` tests bypass `loadYamlConfig()` entirely (passing yamlConfig directly to `resolveConfig()`), so they don't exercise the regex.
+| Goal | Success Criterion |
+|------|------------------|
+| Pattern proof | 3 Theatre templates implemented, all resolving to RLMF certificates |
+| Test coverage | ≥50 tests across ≥18 suites (exceeds TREMOR's 48/16 baseline) |
+| Zero dependencies | `npm install` not required. Node.js 20+ only. |
+| Pipeline compatibility | RLMF certificate schema matches TREMOR/CORONA exactly |
+| Settlement integrity | EPA AirNow resolves all AQI Threshold Gate and Wildfire Cascade theatres |
+| Adversarial resistance | PurpleAir A/B channel consistency check implemented and tested |
+| AQI computation | Explicit EPA breakpoint module with tests at boundary edges |
+| Constructs Network listing | `spec/construct.json` complete, BUTTERFREEZONE.md written |
 
-**Fix**:
-- Replace `\s+` with `[ \t]+` in the inner capture group
-- Updated regex: `/^bridgebuilder:\s*\n((?:[ \t]+.+\n?)*)/m`
-- Verify regex does NOT match `bridgebuilder_design_review:` (prefix false positive)
-- Rebuild TypeScript → dist/
+### Phase 2 Goals (meta-construct)
 
-**Acceptance criteria**:
-- Bridgebuilder reads `enabled: true` correctly regardless of section ordering in `.loa.config.yaml`
-- Existing config.test.ts passes
-- New test exercises `loadYamlConfig()` directly (not just `resolveConfig()` with injected config)
-- New test: config with `bridgebuilder:` before `red_team:` (which has `enabled: false`) parses correctly
-- New test: config with `bridgebuilder_design_review:` is NOT captured by `bridgebuilder:` regex
-- Built dist/ output committed and matches TypeScript source (`npm run build && git diff --exit-code dist/`)
+- ThingSpeak sensor recruitment mechanic
+- Feed grammar classifier (the 5-question framework)
+- Theatre template auto-generation from feed characteristics
+- Composition layer for multi-feed Theatres
+- OpenAQ corroboration tier
 
-### FR-3: Flatline Readiness — 3-Model Validation (#430)
+---
 
-**Problem**: Simstim Phase 0 doesn't validate Flatline readiness. Agents inherit stale skip decisions from previous cycles. PR #431 adds a readiness check but only validates 2 of 3 configured providers.
+## 4. Users & Stakeholders
 
-**This is a NEW FILE** (Flatline-clarified): `flatline-readiness.sh` does not exist in the repository. This is greenfield implementation, not a patch. Scope estimation should account for writing the full script from scratch.
+### Primary Users
 
-**Fix** (supersedes PR #431):
-- Create `.claude/scripts/flatline-readiness.sh` (new file)
-- Reads configured models from `.loa.config.yaml` (primary, secondary, tertiary)
-- Maps models to API key env vars:
-  - `opus` / `claude-*` → `ANTHROPIC_API_KEY`
-  - `gpt-*` → `OPENAI_API_KEY`
-  - `gemini-*` → `GOOGLE_API_KEY` (canonical) with `GEMINI_API_KEY` as accepted alias + deprecation warning
-- Reports status based on provider availability:
-  - `READY` (exit 0): All configured provider keys present
-  - `DISABLED` (exit 1): `flatline_protocol.enabled` is false or absent
-  - `NO_API_KEYS` (exit 2): Zero provider keys present
-  - `DEGRADED` (exit 3): 1+ but not all provider keys present
-- Integration into `simstim-orchestrator.sh` preflight (from PR #431)
-- SKILL.md updated with fresh-per-cycle validation warning
-- Mirrors `beads-health.sh` pattern (same exit codes, flags, PROJECT_ROOT override)
+| User | Role | What They Need |
+|------|------|----------------|
+| **Echelon Theatre operators** | Create and manage air quality prediction markets | Reliable evidence bundles with clear settlement authority and quality scores |
+| **RLMF pipeline consumers** | Use exported training data for AI calibration | Brier-scored certificates with full position history, compatible schema |
+| **Echelon AI agents** (Shark, Spy, Diplomat, Saboteur) | Trade positions in BREATH Theatres | Accurate probability updates, doubt pricing, evidence class signals |
+| **Constructs Network users** | Discover and install BREATH | Clear skill profile, BUTTERFREEZONE.md, construct.json |
 
-**Output schema** (`--json`):
-```json
+### Stakeholders
+
+| Stakeholder | Interest |
+|-------------|---------|
+| **Tobias James (Echelon)** | Third construct proves Echelon network breadth; RLMF training data product quality |
+| **El Capitan (builder)** | Proving the meta-construct pattern via domain-specific MVP |
+| **PurpleAir sensor operators** | Data use (read-only, public API — no obligation, Phase 2 recruitment is opt-in) |
+| **EPA AirNow** | Data use per AirNow exchange guidelines (preliminary data, attribution required) |
+
+---
+
+## 5. Functional Requirements
+
+### 5.1 Oracle Modules
+
+#### PurpleAir Oracle (`src/oracles/purpleair.js`)
+
+**Role**: Signal layer — early warning, density, cross-sensor corroboration. NOT settlement authority.
+
+| Requirement | Detail |
+|-------------|--------|
+| API endpoint | `api.purpleair.com/v1/sensors` |
+| Auth | `X-API-Key` header (points-based billing — API key required) |
+| Poll cadence | Configurable, default 120s (PurpleAir updates ~2 min) |
+| Fields required | `sensor_index`, `name`, `latitude`, `longitude`, `pm2.5`, `pm2.5_a`, `pm2.5_b`, `confidence`, `last_seen`, `location_type` |
+| Channel A/B check | If `abs(pm2.5_a - pm2.5_b) / avg > 0.7`, flag as `channel_inconsistent` → doubt_price = 0.8+ |
+| Location type filter | Only `location_type: 0` (outdoor sensors) in MVP. Indoor sensors excluded. |
+| Deduplication | By `sensor_index`, skip if `last_seen` unchanged |
+| Geographic query | Bounding box query: `nwlng`, `nwlat`, `selng`, `selat` params |
+| Fields param | Request only required fields to minimize point usage |
+| Rate limit handling | Exponential backoff on 429. Cache last successful response per region. |
+| Graceful degradation | If PurpleAir unavailable: log, reduce Theatre update frequency, do not halt |
+
+**Known failure modes**:
+- Sensor goes offline mid-Theatre → mark as `sensor_dropout`, flag evidence bundle
+- Channel A/B divergence (internal sensor fault vs actual pollution event) → `channel_inconsistent` evidence class
+- Location spoofing (indoor sensor tagged outdoor) → `location_type` filter + cross-reference with EPA if nearby
+
+#### EPA AirNow Oracle (`src/oracles/epa-airnow.js`)
+
+**Role**: Settlement authority. Resolves all AQI Threshold Gate and Wildfire Cascade Theatres.
+
+| Requirement | Detail |
+|-------------|--------|
+| API endpoint | `https://www.airnowapi.org/aq/observation/zipCode/current/` and `/aq/observation/latLong/current/` |
+| Auth | `API_KEY` query param (free, registration required) |
+| Poll cadence | 60 min (EPA updates hourly) |
+| Data type | NowCast AQI (real-time, preliminary) — NOT regulatory AQS data |
+| Fields required | `DateObserved`, `HourObserved`, `LocalTimeZone`, `ReportingArea`, `StateCode`, `Latitude`, `Longitude`, `ParameterName`, `AQI`, `Category.Number`, `Category.Name` |
+| Preliminary flag | All AirNow data is preliminary. Evidence bundles must carry `data_tier: "preliminary"` and `attribution: "U.S. EPA AirNow"` |
+| Settlement window | Theatre closes 2h after EPA AirNow reports AQI for the observation window |
+| Fallback | If AirNow unavailable at settlement: use `market_freeze` evidence class (20% Brier discount), 24h retry window |
+| Attribution | Display constraint: data must be attributed to U.S. EPA AirNow in any downstream presentation |
+
+**Time semantics (critical)**:
+- **Observation time**: The hour the measurement was taken (from `DateObserved` + `HourObserved`)
+- **Publication time**: When AirNow published it (typically within the same hour)
+- **Ingest time**: `Date.now()` at time of polling
+- **Averaging basis**: NowCast (real-time weighted average, heavier weight on recent hours)
+- Every evidence bundle preserves all four fields.
+
+### 5.2 Processor Pipeline (`src/processor/`)
+
+#### AQI Computation Module (`src/processor/aqi.js`)
+
+This module is **unique to BREATH** — TREMOR and CORONA don't need it. It is the highest-risk source of subtle bugs and requires the most thorough testing.
+
+| Requirement | Detail |
+|-------------|--------|
+| EPA breakpoint tables | Hard-coded for all 6 pollutants: PM2.5, PM10, O3 (8h and 1h), NO2, SO2, CO |
+| NowCast algorithm | PM2.5 NowCast: weighted 12-hour average with weight = (min_concentration / max_concentration) for each hour |
+| Category mapping | 6 categories: Good (0-50), Moderate (51-100), USG (101-150), Unhealthy (151-200), Very Unhealthy (201-300), Hazardous (301+) |
+| Dominant pollutant | Pollutant with highest AQI value across all measured pollutants |
+| Rounding rules | AQI truncated to integer (not rounded) per EPA spec |
+| Breakpoint discontinuities | Explicit tests at exact breakpoints (50, 100, 150, 200, 300) — these are the threshold crossing points for Theatre gates |
+| PurpleAir correction | Apply EPA CF=1 correction for PurpleAir PM2.5 readings (PurpleAir CF=1 is already applied in their API — verify in docs) |
+
+**Test requirement**: Tests MUST cover all breakpoint boundaries and category transition edges. These are the sharp discontinuities that cause position update bugs.
+
+#### Quality Scoring (`src/processor/quality.js`)
+
+Analogous to TREMOR's `computeQuality`. Adapted for air quality sensor networks.
+
+| Requirement | Detail |
+|-------------|--------|
+| Source tier weight | EPA AirNow: 1.0, PurpleAir cross-validated: 0.85, PurpleAir single-sensor: 0.65, PurpleAir channel_inconsistent: 0.2 |
+| Sensor freshness | `last_seen` age vs poll cadence. >2× cadence age → freshness penalty |
+| Network density | Number of sensors within N km radius. Urban dense (>10 sensors/50km²): baseline 1.0. Rural sparse: normalize down. |
+| Channel consistency | A/B divergence ratio → consistency score component |
+| Cross-validated flag | If nearby EPA monitor confirms PurpleAir reading within 30% → cross_validated bonus |
+| Output | `{ score: 0-1, components: { source_tier, freshness, density, consistency }, cross_validated: bool }` |
+
+#### Uncertainty Pricing (`src/processor/uncertainty.js`)
+
+The "doubt price" (0-1) for AQI readings. Analogous to TREMOR's `buildMagnitudeUncertainty`.
+
+| Requirement | Detail |
+|-------------|--------|
+| Source tier doubt | EPA AirNow: 0.0, PurpleAir cross-validated: 0.15, PurpleAir single-sensor: 0.30, channel_inconsistent: 0.75+, sensor_dropout: 0.95 |
+| Averaging basis doubt | NowCast (recent data): low doubt. Hourly average with old readings: higher doubt. |
+| Review status | AirNow preliminary: slight doubt penalty vs AQS reviewed (AQS not in MVP) |
+| Threshold proximity | AQI within ±5 of Theatre threshold: doubt price amplified (uncertainty at boundary matters more) |
+| Output | `{ doubt_price: 0-1, basis: string, threshold_sensitivity: bool }` |
+
+#### Settlement Logic (`src/processor/settlement.js`)
+
+Three-tier settlement, analogous to TREMOR's `assessStatusFlip`.
+
+| Tier | Condition | Brier discount |
+|------|-----------|----------------|
+| **Oracle** | EPA AirNow confirmed, observation window complete | 0% |
+| **Provisional mature** | PurpleAir cross-validated (>3 sensors agree), >2h stable, quality >0.7 | 10% |
+| **Market freeze** | Theatre expiring, EPA data insufficient, sensor dropout | 20% |
+
+Hard expiry: Theatres that never receive EPA AirNow confirmation get 25% discount and resolve on PurpleAir consensus (≥3 sensors, same ZIP/cluster).
+
+#### Evidence Bundle Construction (`src/processor/bundles.js`)
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `bundle_id` | `breath-{source}-{sensor_id}-{observation_ts}` | |
+| `construct` | `"BREATH"` | |
+| `source` | `"EPA_AIRNOW"` or `"PURPLEAIR"` | |
+| `ingestion_ts` | `Date.now()` | |
+| `evidence_class` | From settlement logic | `ground_truth`, `cross_validated`, `provisional`, `provisional_mature`, `channel_inconsistent`, `sensor_dropout`, `degraded` |
+| `data_tier` | `"settlement_authority"`, `"early_warning"`, `"corroboration"` | Source role in trust hierarchy |
+| `attribution` | Per-source attribution string | Required for AirNow |
+| `payload.observation_time` | Measurement hour | From source |
+| `payload.publication_time` | When source published | From source metadata |
+| `payload.ingest_time` | `Date.now()` | |
+| `payload.averaging_basis` | `"nowcast"`, `"hourly"`, `"instantaneous"` | |
+| `payload.location` | `{ latitude, longitude, location_type, region_label }` | |
+| `payload.aqi` | `{ value, category, category_number, dominant_pollutant, calculation_method }` | |
+| `payload.pollutants` | Array of `{ name, concentration, unit, aqi_value }` | |
+| `payload.quality` | Quality score object | |
+| `payload.uncertainty` | Doubt price object | |
+| `cross_validation` | PurpleAir vs EPA agreement | Null if not yet cross-validated |
+| `theatre_refs` | Array of Theatre IDs | |
+| `resolution` | Settlement assessment | |
+
+### 5.3 Theatre Templates (`src/theatres/`)
+
+#### T1: AQI Threshold Gate (`src/theatres/aqi-gate.js`)
+
+**Question**: Will AQI exceed [threshold] in [region] within [N] hours?
+
+| Parameter | Value |
+|-----------|-------|
+| Resolution type | Binary |
+| Timeframe | 4h – 72h |
+| Threshold options | 51 (Moderate), 101 (USG), 151 (Unhealthy), 201 (Very Unhealthy), 301 (Hazardous) |
+| Settlement authority | EPA AirNow NowCast AQI |
+| Settlement field | `Category.Number ≥ threshold_category` for observation window |
+| Fallback | PurpleAir consensus (≥3 sensors in region, same category) if AirNow unavailable |
+| Auto-spawn | On significant AQI trend (configurable, e.g. 20-point increase in 2h) |
+| Position update | On each new EPA bundle: compute P(threshold_crossed) from current AQI + doubt price |
+| Resolution trigger | EPA AirNow confirms AQI category for full Theatre window |
+
+**RLMF value**: Clean binary ground truth (EPA category) with measurable lead time advantage from PurpleAir early signal. Demonstrates sensor network alpha.
+
+#### T2: Sensor Divergence (`src/theatres/sensor-divergence.js`)
+
+**Question**: Will PurpleAir sensors A and B diverge by >N AQI for >M consecutive hours?
+
+| Parameter | Value |
+|-----------|-------|
+| Resolution type | Binary |
+| Timeframe | 4h – 24h |
+| Divergence threshold | Configurable (default: 50 AQI for >2 consecutive hours) |
+| Settlement authority | PurpleAir (self-resolving — divergence is measured within PurpleAir data) |
+| Paradox Engine role | Native — this IS the divergence check. Divergence between nearby sensors signals either: sensor fault OR hyperlocal pollution event (e.g., one sensor near a road, one not) |
+| Auto-spawn | On channel A/B internal divergence exceeding consistency threshold |
+| Position update | On each new PurpleAir bundle: compute rolling divergence between sensor pair |
+| Resolution trigger | 2 consecutive hours of divergence > threshold = YES. Theatre closes = NO. |
+
+**Note**: This theatre does NOT use EPA AirNow for settlement — it measures PurpleAir network self-consistency, making it the Paradox Engine native theatre for BREATH.
+
+**RLMF value**: Labels sensor fault events vs hyperlocal pollution hotspot events. High value for training agents to distinguish data quality issues from genuine signals.
+
+#### T3: Wildfire Cascade (`src/theatres/wildfire-cascade.js`)
+
+**Question**: Following a wildfire smoke alert for region X, how many sensors in region Y will exceed AQI 200 (Very Unhealthy) within 72h?
+
+| Parameter | Value |
+|-----------|-------|
+| Resolution type | Multi-class (5 buckets: 0-10%, 10-30%, 30-50%, 50-70%, 70%+) |
+| Timeframe | 72h from Theatre open |
+| Trigger | External wildfire alert (AirNow fire smoke category, or manual trigger) |
+| Settlement authority | PurpleAir sensor count (% of tracked sensors in region exceeding AQI 200) — EPA AirNow confirms category |
+| Pattern | Analogous to TREMOR's Aftershock Cascade |
+| Position update | On each polling cycle: recompute % sensors exceeding threshold |
+| Resolution trigger | Theatre closes at 72h. Final % determines bucket outcome. |
+
+**RLMF value**: Multi-class calibration data for wildfire smoke transport prediction. High public health relevance. Direct analogue to TREMOR aftershock cascade which produced strong RLMF certificates.
+
+### 5.4 RLMF Certificate Export (`src/rlmf/certificates.js`)
+
+Schema MUST be compatible with TREMOR/CORONA for pipeline compatibility. Key fields:
+
+```js
 {
-  "status": "READY|DEGRADED|NO_API_KEYS|DISABLED",
-  "providers": {
-    "anthropic": { "configured": true, "available": true },
-    "openai": { "configured": true, "available": true },
-    "google": { "configured": true, "available": true, "env_var": "GOOGLE_API_KEY" }
+  certificate_id: string,       // "breath-{theatre_id}-{resolved_at}"
+  construct: "BREATH",
+  theatre_id: string,
+  template: string,             // "aqi_threshold_gate" | "sensor_divergence" | "wildfire_cascade"
+  outcome: bool | number,       // boolean for binary, bucket index for multi-class
+  opened_at: timestamp,
+  resolved_at: timestamp,
+  performance: {
+    brier_score: number,        // Lower is better
+    brier_time_weighted: number,
+    position_history: Array,    // [{timestamp, probability, evidence_class}]
+    directional_accuracy: bool,
+    lead_time_seconds: number,  // Time before resolution that correct direction was taken
+    volatility: number,
   },
-  "recommendations": ["..."]
+  evidence_summary: {
+    total_bundles: number,
+    by_evidence_class: object,
+    by_source: object,
+    epa_airnow_confirmed: bool,
+    purpleair_sensor_count: number,
+  },
+  brier_discount: number,       // 0, 0.1, 0.2, or 0.25
+  settlement_tier: string,
 }
 ```
 
-**Acceptance criteria**:
-- `flatline-readiness.sh --json` reports correct status for all provider combinations
-- Gemini availability checked when `flatline_protocol.models.tertiary` is configured
-- Both `GOOGLE_API_KEY` and `GEMINI_API_KEY` accepted; `GEMINI_API_KEY` triggers deprecation warning
-- `tests/unit/flatline-readiness.bats` covers READY, DEGRADED, NO_API_KEYS, DISABLED
-- Simstim preflight logs Flatline status to trajectory
+### 5.5 Construct Entrypoint (`src/index.js`)
 
-### FR-4: API Error Message Surfacing (#426)
+Class: `BreathConstruct` (mirrors `TremorConstruct` pattern exactly)
 
-**Problem**: `lib-curl-fallback.sh` 401 handler (lines 255-257) prints generic "Authentication failed" for 401 errors. The actual API error message (e.g., "Incorrect API key provided") is discarded.
+| Method | Description |
+|--------|-------------|
+| `constructor(config)` | `{ pollIntervalMs, apiKeys: {purpleair, airnow}, enableCrossValidation }` |
+| `openAqiThresholdGate(params)` | Creates T1 Theatre |
+| `openSensorDivergence(params)` | Creates T2 Theatre |
+| `openWildfireCascade(params)` | Creates T3 Theatre |
+| `getActiveTheatres()` | Returns open/provisional_hold theatres |
+| `start()` | Begin polling loop |
+| `stop()` | Clear polling interval |
+| `poll()` | Single poll cycle: both oracles → bundles → theatre updates → expiry checks |
+| `getState()` | Health/status snapshot |
+| `getCertificates()` | Exported RLMF certificates |
+| `flushCertificates()` | Clear after pipeline consumption |
 
-**Fix**:
-- Extract `.error.message` from response body via `jq -r '.error.message // empty' 2>/dev/null`
-- Pass extracted message through `redact_secrets()` before display (prevents API key fragment leakage)
-- Show both: specific error first, generic fallback second
-- Handle non-JSON error bodies gracefully (HTML from proxies/CDNs, empty bodies, JSON without `.error` key)
+### 5.6 Construct Specification (`spec/construct.json`)
 
-**Note**: `.env` sourcing is intentionally NOT supported (SKP-003 security decision — env-only auth prevents credential file exposure). This is documented behavior, not a bug.
+Machine-readable spec for Constructs Network listing. Required fields: `name`, `slug`, `description`, `version`, `license`, `domain`, `archetype`, `data_sources`, `theatre_templates`, `dependencies`, `ecosystem`.
 
-**Scope note**: This FR covers the direct curl path in `call_api()` only. The model-invoke path (`call_api_via_model_invoke()`) also swallows errors but is a separate concern for a future cycle.
+---
 
-**Acceptance criteria**:
-- 401 responses show the API provider's error message (after secret redaction)
-- Non-JSON error bodies (HTML, empty, malformed) fall back gracefully to generic message
-- Error messages passed through `redact_secrets()` before display
-- BATS test verifies error extraction for: valid JSON error, HTML body, empty body, JSON without `.error`
+## 6. Technical & Non-Functional Requirements
 
-**Implementation order**: Implement BEFORE FR-1 (both modify `lib-curl-fallback.sh`)
+### Stack
 
-### FR-5: Cross-Platform `timeout` Helper (#427.2)
+| Requirement | Value |
+|-------------|-------|
+| Runtime | Node.js 20+ |
+| External dependencies | **Zero** (no npm install required) |
+| Module format | ESM (`import`/`export`) |
+| Test runner | `node:test` built-in |
+| HTTP | Built-in `fetch` (Node.js 18+) |
+| Architecture | Mirrors TREMOR/CORONA exactly |
 
-**Problem**: `timeout` command doesn't exist on stock macOS. Scripts use ad-hoc fallback chains. At least 2 incompatible `run_with_timeout()` implementations already exist (`post-pr-orchestrator.sh` line 105, `post-pr-e2e.sh` line 103), plus a bare `timeout` call in `golden-path.sh` line 403.
+### Performance
 
-**Fix**:
-- Add canonical `run_with_timeout()` to `.claude/scripts/compat-lib.sh`
-- Fallback chain: `timeout` → `gtimeout` → `perl -e 'alarm(N); exec @ARGV'` → warn and run without timeout
-- Runtime detection (not cached at source time) to support test PATH manipulation
-- Migrate existing implementations:
-  - `post-pr-orchestrator.sh` line 105 → use `compat-lib.sh` helper
-  - `post-pr-e2e.sh` line 103 → use `compat-lib.sh` helper (preserve security allowlist logic separately)
-  - `golden-path.sh` line 403 → use `compat-lib.sh` helper
-- Document in `.claude/protocols/cross-platform-shell.md`
-- CI lint (`shell-compat-lint.yml`) should flag bare `timeout` usage
+| Requirement | Value |
+|-------------|-------|
+| PurpleAir poll latency | <5s per regional bounding box query |
+| EPA AirNow poll latency | <3s per region |
+| Bundle construction | Synchronous, <1ms per observation |
+| Theatre update | Synchronous, <5ms per bundle |
+| Certificate export | Synchronous, <1ms |
 
-**Acceptance criteria**:
-- `run_with_timeout 10 sleep 20` terminates after 10s on both macOS and Linux
-- Function exists in compat-lib.sh with runtime detection (not cached)
-- Existing ad-hoc implementations (3 sites) migrated to canonical helper
-- BATS test covers all fallback paths using PATH manipulation to simulate each scenario
-- CI lint rule flags bare `timeout` command usage
-- Protocol doc updated
+### API Auth & Credentials
 
-### FR-6: Curl Config Injection Guard (#427.4)
+| Source | Auth | Env var |
+|--------|------|---------|
+| PurpleAir | API key (header) | `PURPLEAIR_API_KEY` |
+| EPA AirNow | API key (query param) | `AIRNOW_API_KEY` |
+| ThingSpeak | None in MVP | N/A |
 
-**Problem**: SHELL-002 documents curl config files for API key protection but doesn't warn about CR/LF injection in key values.
+Credentials via env vars or `config.apiKeys` object. `.env.example` required.
 
-**Affected curl config sites** (Flatline-identified):
-- `lib-curl-fallback.sh` lines 211-215
-- `constructs-auth.sh` lines 156-159
-- `constructs-browse.sh` lines 117-120, 179-182
+### Rate Limits & Polling Budget
 
-**Fix**:
-- Add `write_curl_auth_config()` helper to `lib-security.sh`
-- Returns path to config file (enforces `mktemp` + `chmod 600` centrally)
-- Validates key contents: rejects `\r`, `\n`, `\0`, `\` (backslash); escapes `"` in curl config output
-- Uses `printf` not `echo` for config file writing
-- Migrate all existing curl config creation sites to use the new helper
-- Document pattern in SHELL-002 section of cross-platform protocol
+| Source | Rate limit | Strategy |
+|--------|-----------|----------|
+| PurpleAir | Points-based (varies by field count) | Minimal field selection. Cache last response. Exponential backoff on 429. |
+| EPA AirNow | ~1000 calls/day on free tier | Once per hour per region. No more. Cache hourly result. |
+| Graceful degradation | If quota exhausted | Log warning, extend poll interval, do not halt Theatre |
 
-**Acceptance criteria**:
-- Keys containing CR/LF/null/backslash are rejected with clear error message
-- Keys with quotes are properly escaped in curl config output
-- Valid keys (including base64 characters `+`, `/`, `=`) write correct curl config
-- All existing curl config sites (3 files, 4 locations) migrated to `write_curl_auth_config()`
-- CI grep check for raw `printf.*Authorization.*Bearer` patterns prevents regression
-- BATS test covers injection vectors and valid key edge cases
+### Adversarial Sensor Model (PurpleAir-specific)
 
-## 5. Technical & Non-Functional
+| Attack vector | Mitigation |
+|---------------|-----------|
+| Indoor sensor tagged as outdoor | `location_type: 0` filter (outdoor only) |
+| Channel A/B manipulation | A/B consistency check → `channel_inconsistent` evidence class |
+| Frozen/stale data stream | `last_seen` freshness check. Age > 2× poll cadence → `sensor_dropout` |
+| Replayed data | Deduplication by `sensor_index` + `last_seen` timestamp |
+| Location drift (sensor moved) | Flag if sensor coordinates change across polls |
+| Coordinated sensor cluster manipulation | Cross-reference with EPA AirNow within 20km. Divergence >50 AQI → Paradox Engine flag |
 
-- **System Zone authorization**: All target files are in `.claude/scripts/` and `.claude/skills/` (System Zone). These are framework-internal fixes to the review pipeline itself, requiring authorized System Zone writes for this cycle. Safety hooks (`team-role-guard-write.sh`) must be accounted for in Agent Teams mode.
-- All fixes must include BATS tests (Shell Tests CI now functional after #434)
-- TypeScript changes (FR-2) must rebuild dist/ and pass existing tests
-- No new runtime dependencies
-- Cross-platform: all changes must work on macOS (Darwin) and Linux (Ubuntu CI)
-- Pre-existing BATS test failures (271): New tests should be runnable in isolation (`bats tests/unit/<specific-file>.bats`) to avoid interference
-- FR-4 must be implemented before FR-1 (both modify `lib-curl-fallback.sh` in adjacent code paths)
-- Integration test: A single BATS test should exercise FR-1 (verdict normalization) + FR-4 (error surfacing) + FR-6 (curl config guard) in a single review pipeline pass
+**Note**: EPA AirNow reference monitors cannot be gamed (they're government installations). When PurpleAir sensors diverge significantly from a nearby AirNow monitor, this is a signal. The Sensor Tier Divergence theatre (T4, Phase 2) will make this explicit.
 
-## 6. Scope
+### AQI Computation Spec
 
-### In scope
-- FR-1 through FR-6 as described above
-- Migration of existing ad-hoc implementations to centralized helpers (FR-5, FR-6)
+| Requirement | Value |
+|-------------|-------|
+| Module | `src/processor/aqi.js` |
+| Pollutants | PM2.5 (NowCast), PM10 (24h avg), O3 (8h avg), NO2 (1h avg), SO2 (1h avg), CO (8h avg) |
+| Breakpoint tables | Hard-coded from EPA technical assistance document (current revision) |
+| Truncation | Integer truncation, not rounding |
+| Dominant pollutant | Highest AQI value wins |
+| NowCast | Weighted 12-hour average: weight = (Cmin/Cmax) for each hour. Requires ≥2 of last 12 hours valid. |
+| Test requirement | Breakpoint edges, category transitions, NowCast vs raw concentration divergence, dominant pollutant tie-breaking |
 
-### Out of scope
-- Deployment platform awareness for `/bug` triage (#426 enhancement suggestion) — future cycle
-- `.env` file sourcing for API keys — intentional security decision (SKP-003)
-- Shell Tests 271 pre-existing test failures — separate tech debt issue
-- Model-invoke path error surfacing (`call_api_via_model_invoke()`) — future cycle
-- Full YAML parser replacement for config.ts — the regex fix is sufficient for the reported bug
+### Data Attribution
 
-## 7. Risks & Dependencies
+| Source | Attribution requirement |
+|--------|------------------------|
+| EPA AirNow | "U.S. EPA AirNow" — required in all evidence bundles and documentation |
+| PurpleAir | Attribution per their API terms |
 
-| Risk | Mitigation |
-|------|------------|
-| PR #431 conflicts with FR-3 | Close #431, implement fresh from this PRD |
-| TypeScript rebuild for FR-2 may produce merge conflicts with concurrent TS PRs | Merge quickly after building; verify deterministic build output |
-| `GOOGLE_API_KEY` vs `GEMINI_API_KEY` naming inconsistency | **Resolved**: `GOOGLE_API_KEY` is canonical (per cheval.py, google_adapter.py); `GEMINI_API_KEY` accepted as alias with deprecation warning |
-| Curl injection guard may break existing key formats | Use allowlist for known-safe characters; reject only definite injection vectors |
-| FR-1 + FR-4 touch adjacent code in `lib-curl-fallback.sh` | Implement FR-4 first, FR-1 second; shared integration test verifies no interaction bugs |
-| All FRs require System Zone writes | Framework-internal fixes authorized for cycle-048; safety hooks accounted for |
-| 271 pre-existing BATS failures may mask new test results | Run new tests in isolation first, then verify in full suite |
+### Testing Requirements
 
-## 8. Issue References
+| Requirement | Target |
+|-------------|--------|
+| Total tests | ≥50 |
+| Total suites | ≥18 |
+| Pass rate | 100% |
+| Coverage areas | Oracles (mocked), AQI computation (boundary tests), processor pipeline, all 3 Theatre templates, RLMF certificate export, adversarial sensor scenarios |
 
-| Issue | Status | Disposition |
-|-------|--------|-------------|
-| #421 | Closed | Fixed by #434 (gpt-5.3-codex default) |
-| #425 | Open | FR-2 |
-| #426 | Open | FR-4 (error surfacing); .env sourcing is by-design; deployment context is future |
-| #427 | Open | FR-1 (verdict), FR-5 (timeout), FR-6 (curl guard); finding 3 fixed by #434 |
-| #430 | Open | FR-3 (supersedes PR #431) |
+---
 
-## 9. Flatline Review Log
+## 7. Scope & Prioritization
 
-**Phase**: PRD review (cycle-048 Phase 2)
-**Reviewers**: Opus (reviewer) + Opus (skeptic)
-**Findings**: 16 reviewer + 16 skeptic = 32 total
-**HIGH_CONSENSUS**: 8 findings integrated (FR-1 scope expansion, FR-2 context clarification, FR-3 greenfield reframe, FR-4 redaction + non-JSON handling, FR-5 migration scope, FR-6 migration checklist, System Zone authorization, implementation sequencing)
-**DISPUTED**: 1 (GOOGLE_API_KEY resolution — resolved by checking both, integrated)
-**PRAISE**: 2 (scope discipline, centralization approach)
-**BLOCKERS**: 0
+### MVP (v0.1.0) — In Scope
+
+| Component | Status |
+|-----------|--------|
+| PurpleAir oracle | In MVP |
+| EPA AirNow oracle | In MVP (settlement authority) |
+| AQI computation module | In MVP |
+| Quality scoring | In MVP |
+| Uncertainty pricing | In MVP |
+| Settlement logic (3-tier) | In MVP |
+| Evidence bundle construction | In MVP |
+| T1: AQI Threshold Gate | In MVP |
+| T2: Sensor Divergence | In MVP |
+| T3: Wildfire Cascade | In MVP |
+| RLMF certificate export | In MVP |
+| `BreathConstruct` entrypoint | In MVP |
+| Test suite (≥50 tests) | In MVP |
+| `spec/construct.json` | In MVP |
+| `BUTTERFREEZONE.md` | In MVP |
+| `.env.example` | In MVP |
+| Adversarial sensor mitigations | In MVP |
+| Attribution metadata | In MVP |
+
+### Phase 2 — Out of Scope for v0.1.0
+
+| Component | Reason for deferral |
+|-----------|---------------------|
+| ThingSpeak oracle & recruitment mechanic | Incentive economics TBD (depends on Echelon on-chain settlement). Core differentiator but adds scope. |
+| T4: Sensor Tier Divergence (EPA vs PurpleAir) | Requires OpenAQ corroboration tier |
+| T5: ThingSpeak Recruitment Oracle | Requires ThingSpeak oracle |
+| OpenAQ corroboration tier | Requires API key, adds corroboration value but not settlement-critical for MVP |
+| Sensor trust promotion state machine | Relevant when ThingSpeak joins as recruitable source |
+| Historical backfill / replay mode | TREMOR/CORONA don't have it either. Phase 2 for RLMF backtesting. |
+| Meta-construct (feed grammar classifier) | The Uniswap moment — extracted from BREATH patterns after MVP proves |
+| Multi-feed composition layer | Requires meta-construct foundation |
+
+### Explicitly Out of Scope (forever)
+
+- EPA AQS regulatory data (significant delay, wrong latency profile for prediction markets)
+- Satellite data (MODIS, VIIRS) — too complex for v0.1, may be Phase 3
+- Indoor air quality monitoring
+- Personal/consumer air quality devices (not public APIs)
+
+---
+
+## 8. Risks & Dependencies
+
+### Technical Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|-----------|
+| AQI NowCast algorithm subtle bugs | High | High | Explicit AQI module with breakpoint boundary tests. Cross-check against EPA NowCast docs. |
+| PurpleAir A/B channel inconsistency misclassification | Medium | Medium | A/B check formula tested against known good/bad sensor data |
+| EPA AirNow hourly delay creates Theatre resolution lag | High | Low | Expected — built into settlement tier model (provisional_mature handles the gap) |
+| PurpleAir API point cost exceeds budget | Low | Medium | Minimal field selection, bounding box queries, caching |
+| EPA AirNow rate limit on free tier | Low | Low | One poll/hour/region. Well within 1000/day limit. |
+| Sensor coordinate drift (mobile sensors) | Low | Low | Location drift flag in oracle module |
+
+### External Dependencies
+
+| Dependency | Criticality | Risk |
+|------------|------------|------|
+| PurpleAir API availability | High | Service degradation → Theatre evidence gaps. Mitigated by degraded evidence class. |
+| EPA AirNow API availability | High (settlement) | AirNow downtime → market_freeze settlement. 24h retry window. |
+| USGS AirNow data quality | High | Preliminary data is AirNow's stated limitation. Not a bug — documented in attribution. |
+
+### Open Questions
+
+| Question | Decision needed by | Owner |
+|----------|-------------------|-------|
+| ThingSpeak recruitment incentive mechanics | Phase 2 planning | Tobias (Echelon on-chain settlement) |
+| PurpleAir CF correction factor for AQI calculation | Architecture | Verify from PurpleAir API docs — CF=1 may already be applied |
+| OpenAQ v3 API key provisioning for Phase 2 | Phase 2 planning | El Capitan |
+| Sensor tier divergence Theatre threshold (EPA vs PurpleAir ±30%? ±50%?) | Phase 2 | Both |
+
+---
+
+## 9. Reference Architecture
+
+### Directory Structure (mirroring TREMOR)
+
+```
+breath/
+├── src/
+│   ├── index.js                    # BreathConstruct entrypoint
+│   ├── skills/
+│   │   └── air-quality.md          # Construct specialization profile
+│   ├── oracles/
+│   │   ├── purpleair.js            # PurpleAir community sensor poller
+│   │   └── epa-airnow.js           # EPA AirNow settlement oracle
+│   ├── processor/
+│   │   ├── aqi.js                  # AQI computation module (breakpoints, NowCast, categories)
+│   │   ├── quality.js              # Quality scoring (source tier, freshness, density, consistency)
+│   │   ├── uncertainty.js          # Doubt pricing engine
+│   │   ├── settlement.js           # 3-tier settlement logic
+│   │   └── bundles.js              # Evidence bundle construction
+│   └── theatres/
+│       ├── aqi-gate.js             # T1: AQI Threshold Gate (binary)
+│       ├── sensor-divergence.js    # T2: Sensor Divergence (binary, Paradox Engine native)
+│       └── wildfire-cascade.js     # T3: Wildfire Cascade (5-bucket multi-class)
+├── rlmf/
+│   └── certificates.js             # RLMF training data export (Brier scoring)
+├── spec/
+│   └── construct.json              # Machine-readable construct spec
+├── test/
+│   └── breath.test.js              # Test suite (≥50 tests, ≥18 suites, node:test)
+├── BUTTERFREEZONE.md               # Agent-facing project interface
+├── .env.example                    # PURPLEAIR_API_KEY, AIRNOW_API_KEY
+├── package.json                    # name, version, type: "module", scripts.test
+└── README.md                       # Human-facing documentation
+```
+
+### Data Flow
+
+```
+PurpleAir API (120s)  ──→ ┌──────────────────┐
+                          │   Processor       │
+EPA AirNow API (60m)  ──→ │   Pipeline        │──→ Evidence Bundles ──→ Theatre Matching ──→ RLMF Certs
+                          │   aqi → quality   │
+                          │   → uncertainty   │
+                          │   → settlement    │
+                          │   → bundles       │
+                          └──────────────────┘
+```
+
+### Theatre Auto-Spawn Logic
+
+| Trigger | Theatre |
+|---------|---------|
+| AQI trend: +20 in 2h | T1: AQI Threshold Gate (next category threshold) |
+| A/B channel divergence > consistency threshold | T2: Sensor Divergence |
+| AirNow fire smoke category detected | T3: Wildfire Cascade |
+| Manual `openX()` call | Any |
+
+---
+
+## 10. Source Tracing
+
+| Section | Primary Source |
+|---------|---------------|
+| Problem statement | `grimoires/pub/ALPHA PROMPT.md` — design conversation |
+| Settlement architecture | Phase 1 interview (2026-03-19): EPA AirNow selected as settlement authority |
+| Theatre selection (3 templates) | Phase 1 interview (2026-03-19): 3 core selected over 5 |
+| ThingSpeak deferral | Phase 1 interview (2026-03-19): Phase 2 confirmed |
+| Adversarial model | `grimoires/pub/ALPHA PROMPT.md` — second model review + Opus 4.6 synthesis |
+| AQI computation requirements | `grimoires/pub/ALPHA PROMPT.md` — El Capitan's suggestions, Opus 4.6 acceptance |
+| Source tier model | `grimoires/pub/ALPHA PROMPT.md` — Opus 4.6 RESOLUTION AUTHORITY section |
+| Time semantics | `grimoires/pub/ALPHA PROMPT.md` — El Capitan's TIME SEMANTICS suggestion |
+| TREMOR pattern | `grimoires/pub/TREMOR docs/TREMOR index.js`, `bundles.js`, `BUTTERFREEZONE.md` |
+| CORONA pattern | `grimoires/pub/Corona docs/CORONA readme.md` |
+| Platform context | `grimoires/pub/Echelon/ECHELON readme.md` |

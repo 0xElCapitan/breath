@@ -1,4 +1,4 @@
-# cycle-040 Notes
+# cycle-001 Notes — BREATH v0.1.0 PurpleAir MVP
 
 ## Rollback Plan (Multi-Model Adversarial Review Upgrade)
 
@@ -61,6 +61,27 @@ Also revert in:
 | 2026-02-26 | Cache: result stored [key: test-key...] | Source: cache |
 | 2026-02-26 | Cache: PASS [key: test-key...] | Source: cache |
 | 2026-02-26 | Cache: PASS [key: test-key...] | Source: cache |
+## Known Risks
+
+- AQI NowCast algorithm is the highest-risk module. Breakpoint boundary bugs will cause Theatre position update errors. Explicit test coverage mandatory.
+- PurpleAir CF correction factor: verify from PurpleAir API docs whether CF=1 is already applied in their API response or must be applied by BREATH.
+- EPA AirNow settlement delay: hourly update cadence means Theatres under 4h window will have thin settlement data. Market freeze tier handles this.
+
+## Key Decisions
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-03-19 | Settlement authority: EPA AirNow NowCast | Clean ground truth equivalent to USGS 'reviewed'. PurpleAir = signal layer. |
+| 2026-03-19 | ThingSpeak deferred to Phase 2 | Incentive economics depend on Echelon on-chain settlement (not yet finalized). |
+| 2026-03-19 | 3 Theatre templates in MVP | Mirrors TREMOR's strongest patterns. T1/T2/T3 cover binary, paradox-native, and multi-class. |
+| 2026-03-19 | OpenAQ deferred to Phase 2 | Corroboration value but not settlement-critical. API key overhead not justified for MVP. |
+
+## Open Questions
+
+- ThingSpeak recruitment incentive mechanics → blocked on Echelon on-chain settlement design (Tobias)
+- PurpleAir CF=1 correction factor → verify in API docs before implementing aqi.js
+- Sensor tier divergence Theatre threshold (Phase 2) → EPA vs PurpleAir ±30%? ±50%?
+
 ## Blockers
 
 None.

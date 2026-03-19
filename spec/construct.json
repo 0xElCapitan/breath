@@ -1,0 +1,29 @@
+{
+  "name": "BREATH",
+  "slug": "breath",
+  "description": "Air quality intelligence construct for the Echelon prediction market framework. Ingests PurpleAir and EPA AirNow data, runs prediction markets on AQI outcomes, exports Brier-scored RLMF training data.",
+  "version": "0.1.0",
+  "license": "AGPL-3.0",
+  "domain": "air-quality",
+  "archetype": "spy",
+  "runtime": "node",
+  "runtime_version": ">=20",
+  "dependencies": [],
+  "data_sources": [
+    { "id": "purpleair", "role": "early_warning", "auth": "api_key", "url": "api.purpleair.com/v1" },
+    { "id": "epa_airnow", "role": "settlement_authority", "auth": "api_key", "url": "www.airnowapi.org/aq" }
+  ],
+  "theatre_templates": [
+    { "id": "aqi_threshold_gate", "type": "binary", "window_hours": "4-72" },
+    { "id": "sensor_divergence", "type": "binary", "window_hours": "4-24" },
+    { "id": "wildfire_cascade", "type": "multi_class", "buckets": 5, "window_hours": 72 }
+  ],
+  "rlmf": {
+    "schema_version": "0.1.0",
+    "compatible_with": ["tremor", "corona"]
+  },
+  "ecosystem": [
+    { "repo": "0xHoneyJar/loa", "role": "framework", "protocol": "loa-constructs@0.1.0" },
+    { "repo": "echelon/framework", "role": "runtime", "protocol": "echelon-theatres@0.1.0" }
+  ]
+}
