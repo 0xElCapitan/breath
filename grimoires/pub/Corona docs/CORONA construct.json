@@ -1,0 +1,104 @@
+{
+  "slug": "corona",
+  "name": "CORONA",
+  "description": "Coronal Oracle & Realtime Observation Network Agent — space weather intelligence construct for Echelon prediction markets",
+  "icon": "☀️",
+  "category": "intelligence",
+  "version": "0.1.0",
+  "author": "El Capitan",
+  "license": "MIT",
+  "repository": "https://github.com/echelon-protocol/corona",
+
+  "skills_count": 5,
+  "skills": [
+    { "slug": "flare-gate", "command": "/flare-gate", "description": "Binary threshold market on GOES X-ray flare class" },
+    { "slug": "geomag-gate", "command": "/geomag-gate", "description": "Binary Kp threshold market with multi-input position updates" },
+    { "slug": "cme-arrival", "command": "/cme-arrival", "description": "Binary market on WSA-Enlil CME arrival ±6h window" },
+    { "slug": "proton-cascade", "command": "/proton-cascade", "description": "Multi-bucket radio blackout count following major flare" },
+    { "slug": "sw-divergence", "command": "/sw-divergence", "description": "Paradox Engine — solar wind sensor divergence detection" }
+  ],
+
+  "verification_tier": "COMMUNITY",
+
+  "composability": {
+    "depends_on": [],
+    "depended_by": [],
+    "optional": ["tremor"]
+  },
+
+  "data_sources": [
+    {
+      "name": "NOAA SWPC",
+      "url": "https://services.swpc.noaa.gov",
+      "auth": "none",
+      "feeds": ["GOES X-ray flux", "Kp index", "Proton flux", "DSCOVR solar wind", "NOAA scales"]
+    },
+    {
+      "name": "NASA DONKI",
+      "url": "https://api.nasa.gov/DONKI",
+      "auth": "api_key",
+      "feeds": ["Solar flares", "CMEs", "Geomagnetic storms", "Interplanetary shocks"]
+    },
+    {
+      "name": "GFZ Potsdam",
+      "url": "https://kp.gfz-potsdam.de",
+      "auth": "none",
+      "feeds": ["Definitive Kp/Hp index"]
+    }
+  ],
+
+  "theatre_templates": [
+    {
+      "id": "T1",
+      "name": "flare_class_gate",
+      "type": "binary",
+      "resolution": "GOES X-ray + DONKI FLR",
+      "description": "Will a ≥M/X-class flare occur within N hours?"
+    },
+    {
+      "id": "T2",
+      "name": "geomagnetic_storm_gate",
+      "type": "binary",
+      "resolution": "Kp index + DONKI GST",
+      "description": "Will Kp reach ≥N (G-scale) within M hours?"
+    },
+    {
+      "id": "T3",
+      "name": "cme_arrival",
+      "type": "binary",
+      "resolution": "L1 solar wind shock signature",
+      "description": "Will CME arrive within predicted window ±6h?"
+    },
+    {
+      "id": "T4",
+      "name": "proton_event_cascade",
+      "type": "multi_class",
+      "buckets": ["0-1", "2-3", "4-6", "7-10", "11+"],
+      "resolution": "Flare event count",
+      "description": "How many R1+ radio blackouts following M5+ trigger?"
+    },
+    {
+      "id": "T5",
+      "name": "solar_wind_divergence",
+      "type": "binary",
+      "resolution": "Sustained Bz volatility threshold",
+      "description": "Will DSCOVR-ACE diverge beyond threshold for sustained period?"
+    }
+  ],
+
+  "rlmf": {
+    "certificate_schema": "echelon-rlmf-v0.1.0",
+    "compatible_with": ["tremor"],
+    "exports": ["brier_score", "position_history", "calibration_bucket", "temporal_analysis"]
+  },
+
+  "requirements": {
+    "runtime": "node >= 20.0.0",
+    "dependencies": "none",
+    "env_vars": {
+      "NASA_API_KEY": { "required": false, "description": "NASA API key for DONKI (DEMO_KEY used if absent)" }
+    }
+  },
+
+  "tags": ["space-weather", "solar", "geomagnetic", "prediction-market", "rlmf", "osint"]
+}
