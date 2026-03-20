@@ -1,0 +1,28 @@
+slug: breath
+version: "0.1.0"
+construct_class: theatre
+domain_claims:
+  - environmental
+  - oracle_verification
+  - settlement_verification
+  - calibration_analysis
+  - prediction_markets
+  - evidence_bundles
+  - rlmf_export
+  - theatre_management
+skill_manifest:
+  - command: /aqi-gate
+    domain: environmental
+  - command: /sensor-divergence
+    domain: oracle_verification
+  - command: /wildfire-cascade
+    domain: prediction_markets
+  - command: /get-certificates
+    domain: rlmf_export
+refusals:
+  - scope: financial_trading
+    reason: BREATH is scoped to air-quality intelligence and theatre settlement, not market execution.
+  - scope: medical_diagnosis
+    reason: BREATH does not provide medical or public-health advice.
+  - scope: generalized_climate_policy_analysis
+    reason: BREATH is specialized for air-quality sensing, settlement, and calibration workflows.
