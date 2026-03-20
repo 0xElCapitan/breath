@@ -10,16 +10,45 @@
   "runtime_version": ">=20",
   "dependencies": [],
   "data_sources": [
-    { "id": "purpleair", "role": "early_warning", "auth": "api_key", "url": "api.purpleair.com/v1" },
-    { "id": "epa_airnow", "role": "settlement_authority", "auth": "api_key", "url": "www.airnowapi.org/aq" }
+    {
+      "id": "purpleair",
+      "role": "cross_validation",
+      "semantic_role": "early_warning",
+      "auth": "api_key",
+      "url": "api.purpleair.com/v1"
+    },
+    {
+      "id": "epa_airnow",
+      "role": "primary",
+      "semantic_role": "settlement_authority",
+      "auth": "api_key",
+      "url": "www.airnowapi.org/aq"
+    }
   ],
   "theatre_templates": [
-    { "id": "aqi_threshold_gate", "type": "binary", "window_hours": "4-72" },
-    { "id": "sensor_divergence", "type": "binary", "window_hours": "4-24" },
-    { "id": "wildfire_cascade", "type": "multi_class", "buckets": 5, "window_hours": 72 }
+    {
+      "id": "aqi_threshold_gate",
+      "type": "binary",
+      "brier_type": "binary",
+      "window_hours": "4-72"
+    },
+    {
+      "id": "sensor_divergence",
+      "type": "binary",
+      "brier_type": "binary",
+      "window_hours": "4-24"
+    },
+    {
+      "id": "wildfire_cascade",
+      "type": "multi_class",
+      "brier_type": "multi_class",
+      "buckets": 5,
+      "window_hours": 72
+    }
   ],
   "rlmf": {
     "schema_version": "0.1.0",
+    "exports": ["brier_score"],
     "compatible_with": ["tremor", "corona"]
   },
   "ecosystem": [
