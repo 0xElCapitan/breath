@@ -22,15 +22,19 @@
 // ---------------------------------------------------------------------------
 
 export const BREAKPOINTS = {
-  /** PM2.5 24-hour average (µg/m³). Also used for NowCast input. */
+  /**
+   * PM2.5 24-hour average (µg/m³). Also used for NowCast input.
+   * Reflects the 2024 PM2.5 AQI breakpoint revision.
+   * Source: https://aqs.epa.gov/aqsweb/documents/codetables/aqi_breakpoints.html
+   */
   PM25: [
-    [0.0,   12.0,  0,   50],
-    [12.1,  35.4,  51,  100],
-    [35.5,  55.4,  101, 150],
-    [55.5,  150.4, 151, 200],
-    [150.5, 250.4, 201, 300],
-    [250.5, 350.4, 301, 400],
-    [350.5, 500.4, 401, 500],
+    [0.0,   9.0,   0,   50],    // Good
+    [9.1,   35.4,  51,  100],   // Moderate
+    [35.5,  55.4,  101, 150],   // USG
+    [55.5,  125.4, 151, 200],   // Unhealthy
+    [125.5, 225.4, 201, 300],   // Very Unhealthy
+    [225.5, 325.4, 301, 500],   // Hazardous
+    [325.5, 99999.9, 501, 999], // Beyond AQI / extreme events
   ],
 
   /** PM10 24-hour average (µg/m³) */
@@ -116,7 +120,7 @@ export const AQI_CATEGORIES = [
   { number: 3, name: 'USG',            range: [101, 150] },
   { number: 4, name: 'Unhealthy',      range: [151, 200] },
   { number: 5, name: 'Very Unhealthy', range: [201, 300] },
-  { number: 6, name: 'Hazardous',      range: [301, 500] },
+  { number: 6, name: 'Hazardous',      range: [301, 999] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -158,8 +162,8 @@ export function calculateAQI(pollutant, concentration) {
  */
 export function getCategory(aqi) {
   const cat = AQI_CATEGORIES.find(c => aqi >= c.range[0] && aqi <= c.range[1]);
-  // Values above 500 fall into Hazardous
-  return cat ?? { number: 6, name: 'Hazardous', range: [301, 500] };
+  // Fallback for values above 999 (beyond defined category ranges)
+  return cat ?? { number: 6, name: 'Hazardous', range: [301, 999] };
 }
 
 /**

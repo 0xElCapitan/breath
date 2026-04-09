@@ -254,16 +254,18 @@ describe('AQI computation — NowCast', () => {
 
 // ============================================================================
 // Suite 2: AQI computation — breakpoints and truncation
-// MANDATORY: All 8 PM2.5 category boundary values must be explicit tests.
+// MANDATORY: All PM2.5 category boundary values must be explicit tests.
 // ============================================================================
 
 describe('AQI computation — breakpoints and truncation', () => {
-  it('PM2.5 12.0 µg/m³ → AQI 50 (top of Good, not 51)', () => {
-    assert.equal(calculateAQI('PM25', 12.0), 50);
+  // Pre-2024 regime: 12.0 was Good upper boundary (AQI 50). Under 2024 breakpoints
+  // it falls in the Moderate range [9.1, 35.4] → AQI 56.
+  it('PM2.5 12.0 µg/m³ → AQI 56 (Moderate under 2024 breakpoints)', () => {
+    assert.equal(calculateAQI('PM25', 12.0), 56);
   });
 
-  it('PM2.5 12.1 µg/m³ → AQI 51 (bottom of Moderate)', () => {
-    assert.equal(calculateAQI('PM25', 12.1), 51);
+  it('PM2.5 12.1 µg/m³ → AQI 56 (Moderate under 2024 breakpoints)', () => {
+    assert.equal(calculateAQI('PM25', 12.1), 56);
   });
 
   it('PM2.5 35.4 µg/m³ → AQI 100 (top of Moderate)', () => {
@@ -282,12 +284,47 @@ describe('AQI computation — breakpoints and truncation', () => {
     assert.equal(calculateAQI('PM25', 55.5), 151);
   });
 
-  it('PM2.5 150.4 µg/m³ → AQI 200 (top of Unhealthy)', () => {
-    assert.equal(calculateAQI('PM25', 150.4), 200);
+  // Pre-2024 regime: 150.4 was Unhealthy upper boundary (AQI 200). Under 2024
+  // breakpoints it falls in the Very Unhealthy range [125.5, 225.4] → AQI 225.
+  it('PM2.5 150.4 µg/m³ → AQI 225 (Very Unhealthy under 2024 breakpoints)', () => {
+    assert.equal(calculateAQI('PM25', 150.4), 225);
   });
 
-  it('PM2.5 150.5 µg/m³ → AQI 201 (bottom of Very Unhealthy)', () => {
-    assert.equal(calculateAQI('PM25', 150.5), 201);
+  it('PM2.5 150.5 µg/m³ → AQI 225 (Very Unhealthy under 2024 breakpoints)', () => {
+    assert.equal(calculateAQI('PM25', 150.5), 225);
+  });
+
+  // 2024 PM2.5 breakpoint regression tests
+  it('PM2.5 9.0 → AQI 50 (Good upper boundary)', () => {
+    assert.equal(calculateAQI('PM25', 9.0), 50);
+  });
+
+  it('PM2.5 9.1 → AQI 51 (Moderate lower boundary)', () => {
+    assert.equal(calculateAQI('PM25', 9.1), 51);
+  });
+
+  it('PM2.5 125.4 → AQI 200 (Unhealthy upper boundary)', () => {
+    assert.equal(calculateAQI('PM25', 125.4), 200);
+  });
+
+  it('PM2.5 125.5 → AQI 201 (Very Unhealthy lower boundary)', () => {
+    assert.equal(calculateAQI('PM25', 125.5), 201);
+  });
+
+  it('PM2.5 225.4 → AQI 300 (Very Unhealthy upper boundary)', () => {
+    assert.equal(calculateAQI('PM25', 225.4), 300);
+  });
+
+  it('PM2.5 225.5 → AQI 301 (Hazardous lower boundary)', () => {
+    assert.equal(calculateAQI('PM25', 225.5), 301);
+  });
+
+  it('PM2.5 325.4 → AQI 500 (Hazardous upper boundary)', () => {
+    assert.equal(calculateAQI('PM25', 325.4), 500);
+  });
+
+  it('PM2.5 325.5 → AQI 501 (Beyond AQI lower boundary)', () => {
+    assert.equal(calculateAQI('PM25', 325.5), 501);
   });
 });
 
