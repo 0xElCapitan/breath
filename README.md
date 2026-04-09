@@ -10,7 +10,7 @@ BREATH ingests real-time air quality data from PurpleAir's 30,000+ sensor networ
 
 ## Why air quality
 
-- **Ground truth oracle** — EPA-reviewed AQI values are published hourly. No interpretation required: `category_number >= threshold_category_number` closes the market.
+- **Ground truth oracle** — EPA AQI values are published hourly. `category_number >= threshold_category_number` closes the market. **Note:** AirNow current observations are preliminary data and may differ from final regulatory values in AQS/AirData. This is an explicit design choice: low-latency settlement over regulatory finality.
 - **Binary structure** — EPA AQI category breakpoints (51, 101, 151, 201, 301) create natural threshold gates. Every question has a crisp YES/NO resolution.
 - **Fast cycles** — AQI updates hourly. Theatres resolve in 4–72 hours. High-frequency RLMF data generation.
 - **Exogenous** — Predictions do not affect air quality. No reflexivity. Clean RLMF signal.
@@ -116,6 +116,18 @@ AirNow bundles are always processed **before** PurpleAir bundles in each poll cy
 **AQI breakpoint discontinuities** — EPA breakpoint tables have a gap at category boundaries (e.g., PM2.5 12.0 = AQI 50, PM2.5 12.1 = AQI 51). BREATH uses `<=` on Chigh per the official formula. A PM2.5 of exactly 12.0 maps to AQI 50 (Good), not 51 (Moderate). Values are **truncated**, not rounded, per EPA specification.
 
 **Wildfire smoke transport lag** — Smoke plumes may take 2–12 hours to reach downwind sensors after ignition. T3 `window_hours` should be set generously (24–72h) to capture the full cascade arrival. The uniform prior `[0.2, 0.2, 0.2, 0.2, 0.2]` correctly reflects initial ignorance; bucket probabilities converge as sensors report.
+
+---
+
+## Settlement trust policy
+
+AirNow current observations are used as settlement authority for fast-cycle markets. These are **preliminary values** and may differ from final regulatory data in AQS/AirData. This is an explicit design choice: low-latency settlement over regulatory finality. If your use case requires final regulatory truth, implement a deferred reconciliation path against AQS.
+
+---
+
+## Calibration status
+
+Many threshold values and scoring weights in the processor pipeline are engineering estimates awaiting empirical calibration. These are marked with `// TBD: empirical calibration needed` in the source code. See the [audit report](grimoires/loa/a2a/audits/2026-04-08/SECURITY-AUDIT-REPORT.md) for the full list.
 
 ---
 

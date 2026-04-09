@@ -158,7 +158,7 @@ export class SensorRegistry {
           aqi_history: [],
           last_seen: sensor.last_seen,
           state: 'active',
-          channel_consistency_score: 0.5, // Neutral prior until A/B data accumulates
+          channel_consistency_score: 0.5, // source: neutral prior until A/B data accumulates
           nearby_agreement_count: 0,
           _consistencyHistory: [],        // Internal — rolling buffer for channel consistency
         });
@@ -267,7 +267,8 @@ export class SensorRegistry {
     if (!record || record.aqi_history.length < 2) return 0;
 
     const cutoff = Date.now() - hours * 3_600_000;
-    const window = record.aqi_history.filter(e => e.t >= cutoff);
+    // aqi_history is stored newest-first — reverse to oldest-first before splitting.
+    const window = record.aqi_history.filter(e => e.t >= cutoff).reverse();
     if (window.length < 2) return 0;
 
     // Split window into old half and new half; compare averages.
@@ -368,7 +369,7 @@ export class BreathConstruct {
     this.theatres            = new Map();
     this.sensorRegistry      = new SensorRegistry();
     this.lastAirNowPoll      = 0;
-    this.processedBundleIds  = new Set();
+    this._processedBundles   = new Map(); // bundleId → expiresAt (TTL dedup cache)
     this.certificates        = [];
 
     // Stats
@@ -379,10 +380,16 @@ export class BreathConstruct {
       theatres_created:     0,
       theatres_resolved:    0,
       certificates_exported: 0,
+      certificate_export_errors: 0,
+      poll_errors:          0,
+      purpleair_errors:     0,
+      airnow_errors:        0,
+      skipped_polls:        0,
     };
 
-    this.pollTimer = null;
-    this._running  = false;
+    this.pollTimer    = null;
+    this._running     = false;
+    this._pollInFlight = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -527,6 +534,20 @@ export class BreathConstruct {
    *   6. Check auto-spawn
    */
   async poll() {
+    if (this._pollInFlight) {
+      this.stats.skipped_polls++;
+      return;
+    }
+    this._pollInFlight = true;
+    try {
+      return await this._pollInner();
+    } finally {
+      this._pollInFlight = false;
+    }
+  }
+
+  /** @private */
+  async _pollInner() {
     const now = Date.now();
     this.stats.polls++;
 
@@ -545,7 +566,9 @@ export class BreathConstruct {
     try {
       paResult = await paFn(paConfig, this.sensorRegistry, activeTheatres);
     } catch (err) {
-      console.error('[BREATH] PurpleAir oracle error:', err.message);
+      console.error('[BREATH] PurpleAir oracle error:', err.message, err.stack);
+      this.stats.purpleair_errors++;
+      this.stats.poll_errors++;
     }
 
     // Step 2: Poll AirNow if ≥60m has elapsed since last call
@@ -556,7 +579,9 @@ export class BreathConstruct {
         ainowResult    = await ainowFn(ainowConfig, activeTheatres);
         this.lastAirNowPoll = now;
       } catch (err) {
-        console.error('[BREATH] AirNow oracle error:', err.message);
+        console.error('[BREATH] AirNow oracle error:', err.message, err.stack);
+        this.stats.airnow_errors++;
+        this.stats.poll_errors++;
       }
     }
 
@@ -589,8 +614,15 @@ export class BreathConstruct {
    * @param {object} bundle - Evidence bundle from oracle pipeline
    */
   _processBundle(bundle) {
-    if (this.processedBundleIds.has(bundle.bundle_id)) return;
-    this.processedBundleIds.add(bundle.bundle_id);
+    const now = Date.now();
+    // Amortized eviction: prune expired entries when cache exceeds 10k
+    if (this._processedBundles.size > 10_000) {
+      for (const [id, expiresAt] of this._processedBundles) {
+        if (now > expiresAt) this._processedBundles.delete(id);
+      }
+    }
+    if (this._processedBundles.has(bundle.bundle_id)) return;
+    this._processedBundles.set(bundle.bundle_id, now + 5 * 60_000); // 5-minute TTL
 
     for (const [id, theatre] of this.theatres) {
       if (theatre.state === 'resolved') continue;
@@ -627,7 +659,17 @@ export class BreathConstruct {
    * @returns {object} Exported certificate
    */
   _exportCertificate(theatre) {
-    const cert = exportCertificate(theatre, { construct_id: this.constructId });
+    let cert;
+    try {
+      cert = exportCertificate(theatre, { construct_id: this.constructId });
+    } catch (err) {
+      console.error(
+        `[BREATH] Certificate export failed for theatre ${theatre.id}:`,
+        err.message, err.stack,
+      );
+      this.stats.certificate_export_errors++;
+      return null;
+    }
     this.certificates.push(cert);
     this.stats.theatres_resolved++;
     this.stats.certificates_exported++;
@@ -677,6 +719,7 @@ export class BreathConstruct {
       if (record.state === 'dropout') continue;
 
       const trend = this.sensorRegistry.getAqiTrend(record.sensor_index, 2);
+      // TBD: empirical calibration needed — +20 AQI in 2h trigger is an engineering estimate
       if (trend < 20) continue;
 
       const latestAqi = record.aqi_history?.[0]?.aqi;

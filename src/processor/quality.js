@@ -43,11 +43,13 @@ export function computeChannelConsistency(pm25_a, pm25_b) {
 
   // Near-zero readings: tiny absolute differences become huge ratios.
   // Below 2 µg/m³ the divergence ratio is not meaningful.
+  // TBD: empirical calibration needed — 2.0 µg/m³ is an engineering estimate
   if (avg < 2.0) return 1.0;
 
   const divergenceRatio = Math.abs(pm25_a - pm25_b) / avg;
 
   // Linear mapping: 0 divergence → score 1.0; divergenceRatio ≥ 0.7 → score 0.0
+  // source: engineering guess; PurpleAir community guidance suggests 0.7 as failure threshold
   return Math.max(0, 1 - divergenceRatio / 0.7);
 }
 
@@ -118,6 +120,7 @@ export function computeQuality(sensor, registryRecord, nearbySensors, nearbyAirN
   // --- density ---
   // Number of other active sensors within the density radius.
   // 10+ sensors = urban dense = score 1.0. Scales linearly below that.
+  // TBD: empirical calibration needed — 10 as urban-dense threshold is an estimate
   const density = Math.min(1.0, nearbySensors.length / 10);
 
   // --- consistency ---
@@ -129,11 +132,13 @@ export function computeQuality(sensor, registryRecord, nearbySensors, nearbyAirN
   // EPA AirNow within ~20km agrees within 30% (or 15 AQI, whichever is larger).
   let cross_validated = false;
   if (nearbyAirNow && typeof nearbyAirNow.AQI === 'number' && typeof sensor.aqi_computed === 'number') {
+    // TBD: empirical calibration needed — 30% / 15 AQI tolerance is an engineering estimate
     const tolerance = Math.max(nearbyAirNow.AQI * 0.3, 15);
     cross_validated = Math.abs(sensor.aqi_computed - nearbyAirNow.AQI) <= tolerance;
   }
 
   // --- composite ---
+  // TBD: empirical calibration needed — weights are engineering estimates
   const raw = (
     source_tier * 0.35 +
     freshness   * 0.30 +

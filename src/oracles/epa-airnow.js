@@ -163,6 +163,16 @@ export async function pollAirNow(config, activeTheatres = []) {
     if (!Array.isArray(obsArray)) continue;
 
     for (const obs of obsArray) {
+      // B5/B11: Validate required fields — prevents NaN propagation and silent failures
+      if (typeof obs.AQI !== 'number') {
+        console.warn(`[BREATH:AirNow] Dropping observation with missing AQI in ${region.label ?? region.lat}`);
+        continue;
+      }
+      if (typeof obs.Latitude !== 'number' || !isFinite(obs.Latitude) ||
+          typeof obs.Longitude !== 'number' || !isFinite(obs.Longitude)) {
+        console.warn(`[BREATH:AirNow] Dropping observation with invalid coordinates in ${region.label ?? region.lat}`);
+        continue;
+      }
       const times = parseAirNowObservationTime(obs);
       if (!times) continue; // Unknown timezone — skip
 

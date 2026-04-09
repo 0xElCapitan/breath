@@ -82,7 +82,9 @@ export function computeLeadTime(positionHistory, outcome, resolvedAt) {
   if (!positionHistory || positionHistory.length === 0) return 0;
   const correctCross = typeof outcome === 'boolean'
     ? (outcome ? (p => p > 0.5) : (p => p < 0.5))
-    : (p => p > 0.5); // T3: p = pct_exceeded — treat >0.5 as leaning toward high cascade
+    : outcome <= 1
+      ? (p => p < 0.5)   // T3 bucket 0–1: low cascade (<30% exceeded) — correct if p < 0.5
+      : (p => p > 0.5);  // T3 bucket 2–4: high cascade (≥30% exceeded) — correct if p > 0.5
 
   for (const entry of positionHistory) {
     if (correctCross(entry.p)) {
@@ -184,7 +186,9 @@ export function exportCertificate(theatre, meta = {}) {
   const finalP = positionHistory[positionHistory.length - 1]?.p ?? 0.5;
   const directionalAccuracy = typeof outcome === 'boolean'
     ? (outcome ? finalP > 0.5 : finalP < 0.5)
-    : finalP > 0.5; // T3: high pct_exceeded = leaning toward higher buckets
+    : outcome <= 1
+      ? finalP < 0.5   // T3 bucket 0–1: low cascade — correct if position leaned low
+      : finalP > 0.5;  // T3 bucket 2–4: high cascade — correct if position leaned high
 
   return {
     certificate_id: `breath-${theatre.id}-${theatre.resolved_at}`,

@@ -97,7 +97,14 @@ export function normalizePurpleAirResponse(apiResponse) {
   if (!apiResponse?.fields || !apiResponse?.data) return [];
   const { fields, data } = apiResponse;
 
-  return data.map(row => {
+  const sensors = [];
+  for (const row of data) {
+    // B5: Guard against short rows — PurpleAir API could return truncated data
+    if (!Array.isArray(row) || row.length < fields.length) {
+      console.warn(`[BREATH:PurpleAir] Dropping row with ${row?.length ?? 0} fields (expected ${fields.length})`);
+      continue;
+    }
+
     const sensor = {};
     for (let i = 0; i < fields.length; i++) {
       sensor[fields[i]] = row[i];
@@ -109,8 +116,20 @@ export function normalizePurpleAirResponse(apiResponse) {
     sensor.pm25_a   = sensor['pm2.5_a'] ?? null;
     sensor.pm25_b   = sensor['pm2.5_b'] ?? null;
 
-    return sensor;
-  });
+    // B5: Validate required fields — drop sensors with missing/non-numeric core fields
+    if (
+      typeof sensor.sensor_index !== 'number' ||
+      typeof sensor.latitude !== 'number' || !isFinite(sensor.latitude) ||
+      typeof sensor.longitude !== 'number' || !isFinite(sensor.longitude) ||
+      typeof sensor.last_seen !== 'number'
+    ) {
+      console.warn(`[BREATH:PurpleAir] Dropping sensor ${sensor.sensor_index ?? '?'} — missing required numeric fields`);
+      continue;
+    }
+
+    sensors.push(sensor);
+  }
+  return sensors;
 }
 
 /**
@@ -118,6 +137,7 @@ export function normalizePurpleAirResponse(apiResponse) {
  * Used to populate nearby_agreement_count in the SensorRegistry.
  *
  * "Nearby" is approximated as within 0.5° in both lat and lon (≈50km bbox).
+ * TBD: empirical calibration needed — 0.5° radius is an engineering estimate
  *
  * @param {object} sensor
  * @param {object[]} allSensors - Full normalized batch

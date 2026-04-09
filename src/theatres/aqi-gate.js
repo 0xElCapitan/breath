@@ -97,7 +97,9 @@ export function processAqiThresholdGate(theatre, bundle) {
 
   // EPA AirNow ground truth → immediate resolution based on category_number
   if (bundle.source === 'EPA_AIRNOW' && bundle.evidence_class === 'ground_truth') {
-    const crossed = bundle.payload.aqi.category_number >= theatre.threshold_category_number;
+    const categoryNumber = bundle.payload?.aqi?.category_number;
+    if (typeof categoryNumber !== 'number') return updated; // skip malformed bundle
+    const crossed = categoryNumber >= theatre.threshold_category_number;
     const now = Date.now();
     updated.state               = 'resolved';
     updated.outcome             = crossed;

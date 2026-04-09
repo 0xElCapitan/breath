@@ -9,7 +9,7 @@
  * Resolves entirely within PurpleAir data. No EPA AirNow involvement.
  *
  * State flow:
- *   open → resolved (YES)   (consecutive_hours_divergent >= required_hours)
+ *   open → resolved (YES)   (consecutive_divergent_readings >= required_consecutive_readings)
  *   open → resolved (NO)    (Theatre closes without condition met)
  */
 
@@ -23,7 +23,7 @@
  *   @param {number}  params.sensor_a_index          - PurpleAir sensor_index for sensor A
  *   @param {number}  params.sensor_b_index          - PurpleAir sensor_index for sensor B
  *   @param {number}  [params.aqi_divergence_threshold=50]  - |AQI_A - AQI_B| must exceed this
- *   @param {number}  [params.required_hours=2]       - Consecutive readings above threshold for YES
+ *   @param {number}  [params.required_consecutive_readings=2] - Consecutive readings above threshold for YES
  *   @param {number}  [params.window_hours=24]        - Total Theatre window
  *   @param {number}  [params.base_rate=0.10]
  * @returns {object} Theatre state
@@ -35,22 +35,26 @@ export function createSensorDivergence({
   sensor_a_index,
   sensor_b_index,
   aqi_divergence_threshold = 50,
-  required_hours = 2,
+  required_consecutive_readings,
+  required_hours, // deprecated alias — use required_consecutive_readings
   window_hours = 24,
   base_rate = 0.10,
 }) {
+  // B9: resolve deprecated alias — required_consecutive_readings takes precedence
+  const reqReadings = Math.max(1, required_consecutive_readings ?? required_hours ?? 2);
+
   const now = Date.now();
   const theatreId = id || `T2-${sensor_a_index}v${sensor_b_index}-${now}`;
   return {
     id: theatreId,
     template: 'sensor_divergence',
-    question: `Will sensors ${sensor_a_index} and ${sensor_b_index} diverge by >${aqi_divergence_threshold} AQI for ${required_hours}+ consecutive readings?`,
+    question: `Will sensors ${sensor_a_index} and ${sensor_b_index} diverge by >${aqi_divergence_threshold} AQI for ${reqReadings}+ consecutive readings?`,
     region_name,
     region_bbox,
     sensor_a_index,
     sensor_b_index,
     aqi_divergence_threshold,
-    required_hours,
+    required_consecutive_readings: reqReadings,
     window_hours,
     opens_at:    now,
     closes_at:   now + window_hours * 3_600_000,
@@ -60,14 +64,14 @@ export function createSensorDivergence({
       t:        now,
       p:        base_rate,
       evidence: null,
-      reason:   `Base rate: P(sensors ${sensor_a_index} vs ${sensor_b_index} diverge >${aqi_divergence_threshold} for ${required_hours} consecutive readings)`,
+      reason:   `Base rate: P(sensors ${sensor_a_index} vs ${sensor_b_index} diverge >${aqi_divergence_threshold} for ${reqReadings} consecutive readings)`,
     }],
     current_position:          base_rate,
     evidence_bundles:          [],
     resolving_bundle_id:       null,
     resolved_at:               null,
     divergence_window:         [],
-    consecutive_hours_divergent: 0,
+    consecutive_divergent_readings: 0,
     _last_aqi_a:               undefined,
     _last_aqi_b:               undefined,
   };
@@ -119,25 +123,26 @@ export function processSensorDivergence(theatre, bundle) {
   }];
 
   // Consecutive counter: increments on exceeded, resets on non-exceeded
-  updated.consecutive_hours_divergent = exceeded
-    ? theatre.consecutive_hours_divergent + 1
+  updated.consecutive_divergent_readings = exceeded
+    ? theatre.consecutive_divergent_readings + 1
     : 0;
 
-  // Position: fraction of required_hours window that have exceeded (smooth 0→1)
+  // Position: fraction of required readings window that have exceeded (smooth 0→1)
+  const reqReadings = updated.required_consecutive_readings;
   const recentExceeded = updated.divergence_window
-    .slice(-updated.required_hours)
+    .slice(-reqReadings)
     .filter(e => e.exceeded).length;
 
-  const resolving = updated.consecutive_hours_divergent >= updated.required_hours;
+  const resolving = updated.consecutive_divergent_readings >= reqReadings;
   updated.current_position = resolving
     ? 1.0
-    : Math.max(0.01, Math.min(0.99, recentExceeded / updated.required_hours));
+    : Math.max(0.01, Math.min(0.99, recentExceeded / reqReadings));
 
   updated.position_history = [...theatre.position_history, {
     t:        Date.now(),
     p:        updated.current_position,
     evidence: bundle.bundle_id,
-    reason:   `Sensor ${theatre.sensor_a_index}:${aqiA} vs ${theatre.sensor_b_index}:${aqiB} (diff=${diff}, exceeded=${exceeded}, consecutive=${updated.consecutive_hours_divergent})`,
+    reason:   `Sensor ${theatre.sensor_a_index}:${aqiA} vs ${theatre.sensor_b_index}:${aqiB} (diff=${diff}, exceeded=${exceeded}, consecutive=${updated.consecutive_divergent_readings})`,
   }];
 
   if (resolving) {
@@ -171,7 +176,7 @@ export function expireSensorDivergence(theatre) {
       t:        now,
       p:        theatre.current_position,
       evidence: null,
-      reason:   `Theatre expired — divergence condition not met (consecutive=${theatre.consecutive_hours_divergent}/${theatre.required_hours})`,
+      reason:   `Theatre expired — divergence condition not met (consecutive=${theatre.consecutive_divergent_readings}/${theatre.required_consecutive_readings})`,
     }],
   };
 }

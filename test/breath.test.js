@@ -39,6 +39,12 @@
  *
  *   Total Sprint 4: 6 tests / 1 suite
  *
+ * Audit Regression Tests
+ *   - Sprint 1: B1, B4, B10, B2, B3, B6       (12 tests)
+ *   - Sprint 2: B5a, B5b, B8, B9              (12 tests)
+ *
+ *   Total Audit: 24 tests / 10 suites
+ *
  * No live API calls. All HTTP responses are static mocks.
  */
 
@@ -115,6 +121,7 @@ import {
   exportCertificate,
   brierScoreBinary,
   brierScoreMultiClass,
+  computeLeadTime,
 } from '../src/rlmf/certificates.js';
 
 // ============================================================================
@@ -516,7 +523,7 @@ describe('Settlement logic', () => {
     const sensor = makeSensor({ state: 'active' });
     const registryRecord = {
       nearby_agreement_count: 5,
-      last_seen: Date.now() - 3.5 * 3_600_000, // 3.5h ago
+      last_seen: Math.floor((Date.now() - 3.5 * 3_600_000) / 1000), // 3.5h ago, Unix seconds (PurpleAir format)
     };
     const q = { ...goodQuality(), score: 0.80 };
     const result = assessSettlement(sensor, q, registryRecord, true, null);
@@ -1132,7 +1139,7 @@ describe('T2: Sensor Divergence', () => {
     assert.equal(theatre.state, 'open', 'Still open — only one sensor seen');
     // Step 2: sensor B reports AQI 100 → diff=100>50, consecutive=1
     theatre = processSensorDivergence(theatre, makePABundle({ sensor_id: 2, aqi_value: 100 }));
-    assert.equal(theatre.consecutive_hours_divergent, 1);
+    assert.equal(theatre.consecutive_divergent_readings, 1);
     assert.equal(theatre.state, 'open', 'Still open after 1 of 2 required');
     // Step 3: sensor A again → diff=100>50, consecutive=2 → RESOLVED
     theatre = processSensorDivergence(theatre, makePABundle({ sensor_id: 1, aqi_value: 200 }));
@@ -1141,17 +1148,17 @@ describe('T2: Sensor Divergence', () => {
     assert.equal(theatre.current_position, 1.0);
   });
 
-  it('divergence then convergence resets consecutive_hours_divergent to 0', () => {
+  it('divergence then convergence resets consecutive_divergent_readings to 0', () => {
     let theatre = createSensorDivergence({
       sensor_a_index: 1, sensor_b_index: 2, aqi_divergence_threshold: 50, required_hours: 3,
     });
     // Diverge: diff=100>50, consecutive=1
     theatre = processSensorDivergence(theatre, makePABundle({ sensor_id: 1, aqi_value: 200 }));
     theatre = processSensorDivergence(theatre, makePABundle({ sensor_id: 2, aqi_value: 100 }));
-    assert.equal(theatre.consecutive_hours_divergent, 1);
+    assert.equal(theatre.consecutive_divergent_readings, 1);
     // Converge: sensor A drops to 50 → diff=|50-100|=50, NOT exceeded (strict >), consecutive resets
     theatre = processSensorDivergence(theatre, makePABundle({ sensor_id: 1, aqi_value: 50 }));
-    assert.equal(theatre.consecutive_hours_divergent, 0, 'Consecutive counter should reset on convergence');
+    assert.equal(theatre.consecutive_divergent_readings, 0, 'Consecutive counter should reset on convergence');
     assert.equal(theatre.state, 'open');
   });
 
@@ -1437,5 +1444,382 @@ describe('BreathConstruct — integration', () => {
       initialHistoryLen + 1,
       'Only 1 new position_history entry — AirNow resolved first, PA bundle was ignored',
     );
+  });
+});
+
+// ============================================================================
+// Audit Sprint 1 — Regression Tests
+// ============================================================================
+
+describe('Audit B1 — getAqiTrend ordering', () => {
+  it('returns positive trend for rising AQI', () => {
+    const registry = new SensorRegistry();
+    const now = Date.now();
+    // aqi_history is stored newest-first
+    registry.sensors.set(1, {
+      sensor_index: 1,
+      name: 'Test',
+      location: { latitude: 37, longitude: -122, location_type: 0 },
+      location_stable: true,
+      pm25_history: [],
+      aqi_history: [
+        { t: now,                 aqi: 100 },
+        { t: now - 30 * 60_000,  aqi: 90  },
+        { t: now - 60 * 60_000,  aqi: 80  },
+        { t: now - 90 * 60_000,  aqi: 70  },
+      ],
+      last_seen: Math.floor(now / 1000),
+      state: 'active',
+      channel_consistency_score: 0.5,
+      nearby_agreement_count: 0,
+      _consistencyHistory: [],
+    });
+    const trend = registry.getAqiTrend(1, 2);
+    assert.ok(trend > 0, `Expected positive trend for rising AQI, got ${trend}`);
+  });
+
+  it('returns negative trend for falling AQI', () => {
+    const registry = new SensorRegistry();
+    const now = Date.now();
+    registry.sensors.set(1, {
+      sensor_index: 1,
+      name: 'Test',
+      location: { latitude: 37, longitude: -122, location_type: 0 },
+      location_stable: true,
+      pm25_history: [],
+      aqi_history: [
+        { t: now,                 aqi: 70  },
+        { t: now - 30 * 60_000,  aqi: 80  },
+        { t: now - 60 * 60_000,  aqi: 90  },
+        { t: now - 90 * 60_000,  aqi: 100 },
+      ],
+      last_seen: Math.floor(now / 1000),
+      state: 'active',
+      channel_consistency_score: 0.5,
+      nearby_agreement_count: 0,
+      _consistencyHistory: [],
+    });
+    const trend = registry.getAqiTrend(1, 2);
+    assert.ok(trend < 0, `Expected negative trend for falling AQI, got ${trend}`);
+  });
+
+  it('returns 0 for insufficient data', () => {
+    const registry = new SensorRegistry();
+    registry.sensors.set(1, {
+      sensor_index: 1,
+      aqi_history: [{ t: Date.now(), aqi: 50 }],
+    });
+    assert.equal(registry.getAqiTrend(1, 2), 0);
+  });
+});
+
+describe('Audit B4 — NaN propagation guards', () => {
+  it('thresholdCrossingProbability returns 0.5 for undefined AQI', () => {
+    const p = thresholdCrossingProbability(undefined, 151, 0.5);
+    assert.ok(!isNaN(p), 'Result must not be NaN');
+    assert.equal(p, 0.5);
+  });
+
+  it('thresholdCrossingProbability returns 0.5 for NaN AQI', () => {
+    const p = thresholdCrossingProbability(NaN, 151, 0.3);
+    assert.ok(!isNaN(p), 'Result must not be NaN');
+    assert.equal(p, 0.5);
+  });
+
+  it('processAqiThresholdGate: position stays finite with undefined aqi.value', () => {
+    const theatre = createAqiThresholdGate({
+      region_name: 'Test',
+      region_bbox: [-123, 37.5, -122, 38],
+      aqi_threshold: 151,
+      window_hours: 24,
+    });
+    const badBundle = {
+      bundle_id: 'test-nan-1',
+      source: 'PURPLEAIR',
+      evidence_class: 'provisional',
+      payload: {
+        aqi: { value: undefined, category: 'Unknown', category_number: 0 },
+        quality: { composite: 0.5 },
+        uncertainty: { doubt_price: 0.3 },
+        location: { sensor_id: 999 },
+      },
+    };
+    const updated = processAqiThresholdGate(theatre, badBundle);
+    assert.ok(isFinite(updated.current_position), `position must be finite, got ${updated.current_position}`);
+  });
+
+  it('processAqiThresholdGate: skips EPA bundle with missing category_number', () => {
+    const theatre = createAqiThresholdGate({
+      region_name: 'Test',
+      region_bbox: [-123, 37.5, -122, 38],
+      aqi_threshold: 151,
+      window_hours: 24,
+    });
+    const badEpaBundle = {
+      bundle_id: 'test-nan-epa',
+      source: 'EPA_AIRNOW',
+      evidence_class: 'ground_truth',
+      payload: {
+        aqi: null,
+        location: { sensor_id: 'sf' },
+      },
+    };
+    const updated = processAqiThresholdGate(theatre, badEpaBundle);
+    assert.notEqual(updated.state, 'resolved', 'Theatre must not resolve on malformed EPA bundle');
+  });
+});
+
+describe('Audit B10 — settlement last_seen unit conversion', () => {
+  it('assessSettlement: computes correct ageHours from seconds-valued last_seen', () => {
+    const sensor = makeSensor({ state: 'active' });
+    const threeHoursAgoSec = Math.floor((Date.now() - 3 * 3_600_000) / 1000);
+    const registryRecord = {
+      nearby_agreement_count: 5,
+      last_seen: threeHoursAgoSec,
+    };
+    const q = { ...goodQuality(), score: 0.80 };
+    const result = assessSettlement(sensor, q, registryRecord, true, null);
+    assert.equal(result.evidence_class, 'provisional_mature',
+      'Should classify as provisional_mature for 3h-old cross-validated sensor');
+  });
+
+  it('assessSettlement: fresh sensor (seconds) is NOT provisional_mature', () => {
+    const sensor = makeSensor({ state: 'active' });
+    const registryRecord = {
+      nearby_agreement_count: 5,
+      last_seen: Math.floor(Date.now() / 1000), // just now, in seconds
+    };
+    const q = { ...goodQuality(), score: 0.80 };
+    const result = assessSettlement(sensor, q, registryRecord, true, null);
+    // ageHours ≈ 0, so ageHours > 2 is false → provisional, not provisional_mature
+    assert.equal(result.evidence_class, 'provisional',
+      'Fresh sensor should not be provisional_mature (ageHours < 2)');
+  });
+});
+
+describe('Audit B2 — zombie theatre protection', () => {
+  it('_exportCertificate catches errors and increments counter', () => {
+    const bc = new BreathConstruct({ _oracleOverrides: { pollPurpleAir: async () => ({ bundles: [], dropouts: [] }), pollAirNow: async () => ({ bundles: [], observations: [] }) } });
+    // Force exportCertificate to throw by passing a theatre whose
+    // position_history.filter() will throw (non-iterable)
+    const badTheatre = {
+      id: 'test-zombie',
+      template: 'wildfire_cascade', // triggers bucketProbHistory filter path
+      outcome: 2,
+      opens_at: Date.now() - 10_000,
+      resolved_at: Date.now(),
+      position_history: 'not-an-array', // .filter() on string will throw in brierScoreMultiClass
+      evidence_bundles: [],
+    };
+    // Should not throw
+    const result = bc._exportCertificate(badTheatre);
+    assert.equal(result, null, 'Should return null on export failure');
+    assert.equal(bc.stats.certificate_export_errors, 1, 'Should increment error counter');
+    assert.equal(bc.getCertificates().length, 0, 'No certificate should be stored');
+  });
+});
+
+describe('Audit B3 — TTL dedup cache', () => {
+  it('_processBundle deduplicates by bundle_id', () => {
+    const bc = new BreathConstruct({ _oracleOverrides: { pollPurpleAir: async () => ({ bundles: [], dropouts: [] }), pollAirNow: async () => ({ bundles: [], observations: [] }) } });
+    const theatre = bc.openAqiThresholdGate({
+      region_name: 'Test',
+      region_bbox: [-123, 37.5, -122, 38],
+      aqi_threshold: 151,
+      window_hours: 24,
+    });
+    const bundle = {
+      bundle_id: 'dedup-test-1',
+      source: 'PURPLEAIR',
+      evidence_class: 'provisional',
+      payload: {
+        aqi: { value: 80, category: 'Moderate', category_number: 2 },
+        quality: { composite: 0.5 },
+        uncertainty: { doubt_price: 0.3 },
+        location: { sensor_id: 1, latitude: 37.7, longitude: -122.5 },
+      },
+    };
+    bc._processBundle(bundle);
+    const posAfterFirst = theatre.current_position; // theatre ref is stale, get fresh
+    const theatreAfterFirst = bc.theatres.get(theatre.id);
+    const histLen1 = theatreAfterFirst.position_history.length;
+
+    bc._processBundle(bundle); // duplicate — should be no-op
+    const theatreAfterSecond = bc.theatres.get(theatre.id);
+    assert.equal(theatreAfterSecond.position_history.length, histLen1,
+      'Duplicate bundle must not add position_history entry');
+  });
+});
+
+describe('Audit B6 — single-flight poll guard', () => {
+  it('skipped_polls increments when poll is already in flight', async () => {
+    const bc = new BreathConstruct({
+      _oracleOverrides: {
+        pollPurpleAir: async () => {
+          // Simulate slow poll
+          await new Promise(r => setTimeout(r, 50));
+          return { bundles: [], dropouts: [] };
+        },
+        pollAirNow: async () => ({ bundles: [], observations: [] }),
+      },
+    });
+    // Start two polls concurrently
+    const p1 = bc.poll();
+    const p2 = bc.poll(); // should be skipped
+    await Promise.all([p1, p2]);
+    assert.equal(bc.stats.skipped_polls, 1, 'Second concurrent poll should be skipped');
+  });
+});
+
+// ============================================================================
+// Audit Sprint 2 — Regression tests
+// ============================================================================
+
+describe('Audit B5a — PurpleAir schema validation', () => {
+  it('drops rows shorter than fields array', () => {
+    const response = {
+      fields: ['sensor_index', 'name', 'latitude', 'longitude', 'pm2.5', 'pm2.5_a', 'pm2.5_b', 'confidence', 'last_seen', 'location_type'],
+      data: [
+        [12345, 'Good', 37.77, -122.42, 12.3, 12.0, 12.6, 100, 1700000000, 0],
+        [99999, 'Short'],  // truncated row — should be dropped
+      ],
+    };
+    const result = normalizePurpleAirResponse(response);
+    assert.equal(result.length, 1, 'Truncated row must be dropped');
+    assert.equal(result[0].sensor_index, 12345);
+  });
+
+  it('drops sensors with missing required numeric fields', () => {
+    const response = {
+      fields: ['sensor_index', 'name', 'latitude', 'longitude', 'pm2.5', 'pm2.5_a', 'pm2.5_b', 'confidence', 'last_seen', 'location_type'],
+      data: [
+        [null, 'NoIndex', 37.77, -122.42, 10, 10, 10, 100, 1700000000, 0],       // null sensor_index
+        [111, 'NoLat', null, -122.42, 10, 10, 10, 100, 1700000000, 0],            // null latitude
+        [222, 'InfLon', 37.77, Infinity, 10, 10, 10, 100, 1700000000, 0],         // Infinity longitude
+        [333, 'NoSeen', 37.77, -122.42, 10, 10, 10, 100, null, 0],               // null last_seen
+        [444, 'Valid', 37.77, -122.42, 10, 10, 10, 100, 1700000000, 0],          // valid
+      ],
+    };
+    const result = normalizePurpleAirResponse(response);
+    assert.equal(result.length, 1, 'Only the valid sensor should survive');
+    assert.equal(result[0].sensor_index, 444);
+  });
+
+  it('returns empty array for missing fields/data', () => {
+    assert.deepEqual(normalizePurpleAirResponse({}), []);
+    assert.deepEqual(normalizePurpleAirResponse(null), []);
+    assert.deepEqual(normalizePurpleAirResponse({ fields: ['a'] }), []);
+  });
+});
+
+describe('Audit B5b — AirNow coordinate validation', () => {
+  it('drops observations with non-numeric or infinite coordinates', async () => {
+    const mockObs = [
+      { AQI: 50, Latitude: 37.77, Longitude: -122.42, DateObserved: '2026-04-08 ', HourObserved: 12, LocalTimeZone: 'PST', ParameterName: 'PM2.5', Category: { Name: 'Good', Number: 1 } },
+      { AQI: 60, Latitude: null, Longitude: -122.42, DateObserved: '2026-04-08 ', HourObserved: 12, LocalTimeZone: 'PST', ParameterName: 'PM2.5', Category: { Name: 'Good', Number: 1 } },
+      { AQI: 70, Latitude: 37.77, Longitude: Infinity, DateObserved: '2026-04-08 ', HourObserved: 12, LocalTimeZone: 'PST', ParameterName: 'PM2.5', Category: { Name: 'Good', Number: 1 } },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => mockObs,
+    });
+
+    try {
+      const config = { apiKey: 'test', regions: [{ lat: 37.77, lon: -122.42, radius_miles: 25, label: 'test' }] };
+      const { bundles } = await pollAirNow(config, []);
+      assert.equal(bundles.length, 1, 'Only the observation with valid coordinates should produce a bundle');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe('Audit B8 — T3 directional logic in computeLeadTime', () => {
+  it('low-cascade outcome (bucket 0): correct cross is p < 0.5', () => {
+    const history = [
+      { t: 1000, p: 0.6 },  // wrong direction for low cascade
+      { t: 2000, p: 0.4 },  // correct — position below 0.5
+      { t: 3000, p: 0.3 },
+    ];
+    const resolvedAt = 5000;
+    const lead = computeLeadTime(history, 0, resolvedAt);
+    // First correct cross at t=2000, lead = (5000-2000)/1000 = 3 seconds
+    assert.equal(lead, 3, 'Lead time should measure from first p < 0.5 for bucket 0');
+  });
+
+  it('low-cascade outcome (bucket 1): correct cross is p < 0.5', () => {
+    const history = [
+      { t: 1000, p: 0.3 },  // correct immediately
+    ];
+    const lead = computeLeadTime(history, 1, 4000);
+    assert.equal(lead, 3, 'Bucket 1 (low cascade) should use p < 0.5');
+  });
+
+  it('high-cascade outcome (bucket 3): correct cross is p > 0.5', () => {
+    const history = [
+      { t: 1000, p: 0.3 },  // wrong direction
+      { t: 2000, p: 0.7 },  // correct — above 0.5
+    ];
+    const lead = computeLeadTime(history, 3, 6000);
+    assert.equal(lead, 4, 'Bucket 3 (high cascade) should use p > 0.5');
+  });
+
+  it('binary true outcome still works: correct cross is p > 0.5', () => {
+    const history = [
+      { t: 1000, p: 0.2 },
+      { t: 2000, p: 0.8 },
+    ];
+    const lead = computeLeadTime(history, true, 5000);
+    assert.equal(lead, 3, 'Boolean true outcome should use p > 0.5');
+  });
+});
+
+describe('Audit B9 — required_consecutive_readings backward compat', () => {
+  it('uses required_consecutive_readings when provided', () => {
+    const t = createSensorDivergence({
+      sensor_a_index: 100,
+      sensor_b_index: 200,
+      required_consecutive_readings: 5,
+    });
+    assert.equal(t.required_consecutive_readings, 5);
+  });
+
+  it('falls back to deprecated required_hours alias', () => {
+    const t = createSensorDivergence({
+      sensor_a_index: 100,
+      sensor_b_index: 200,
+      required_hours: 3,
+    });
+    assert.equal(t.required_consecutive_readings, 3);
+  });
+
+  it('required_consecutive_readings takes precedence over required_hours', () => {
+    const t = createSensorDivergence({
+      sensor_a_index: 100,
+      sensor_b_index: 200,
+      required_consecutive_readings: 4,
+      required_hours: 7,
+    });
+    assert.equal(t.required_consecutive_readings, 4, 'New param takes precedence over deprecated alias');
+  });
+
+  it('defaults to 2 when neither is provided', () => {
+    const t = createSensorDivergence({
+      sensor_a_index: 100,
+      sensor_b_index: 200,
+    });
+    assert.equal(t.required_consecutive_readings, 2);
+  });
+
+  it('clamps required_consecutive_readings: 0 to minimum of 1', () => {
+    const t = createSensorDivergence({
+      sensor_a_index: 100,
+      sensor_b_index: 200,
+      required_consecutive_readings: 0,
+    });
+    assert.equal(t.required_consecutive_readings, 1, 'Zero must be clamped to 1 to prevent instant resolution');
   });
 });

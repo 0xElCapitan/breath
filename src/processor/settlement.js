@@ -82,7 +82,8 @@ export function assessSettlement(sensor, quality, registryRecord, crossValidated
   }
 
   // 4. Provisional mature
-  const lastSeenMs = registryRecord?.last_seen ?? now;
+  // registryRecord.last_seen is Unix seconds (from PurpleAir API) — convert to ms.
+  const lastSeenMs = (registryRecord?.last_seen ?? Math.floor(now / 1000)) * 1000;
   // M5: Clamp to 0 — a future last_seen (clock skew, NTP drift) must not
   // produce negative ageHours and silently block provisional_mature.
   const ageHours = Math.max(0, (now - lastSeenMs) / 3_600_000);

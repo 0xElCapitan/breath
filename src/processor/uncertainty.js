@@ -37,6 +37,7 @@ export function buildUncertainty(sensor, quality, theatreThreshold = null) {
   const consistency_class = classifyConsistency(consistency);
 
   // --- Base doubt by channel consistency ---
+  // TBD: empirical calibration needed — doubt prices are engineering estimates
   let doubt_price;
   if (consistency_class === 'inconsistent') {
     // Channel A/B divergence too high — sensor is unreliable
@@ -127,6 +128,8 @@ export function buildAirNowUncertainty(theatreThreshold, currentAQI) {
  * @returns {number} Probability 0–1
  */
 export function thresholdCrossingProbability(aqi, threshold, doubt_price) {
+  if (typeof aqi !== 'number' || !isFinite(aqi)) return 0.5; // maximum uncertainty
+  // TBD: empirical calibration needed — sigma range 5–60 is an engineering estimate
   const sigma = 5 + doubt_price * 55;
   const z = (threshold - aqi) / sigma;
   return normalCDF(-z);
