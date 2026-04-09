@@ -468,6 +468,20 @@ describe('Channel consistency helpers', () => {
   it('classifyConsistency(0.2) returns inconsistent', () => {
     assert.equal(classifyConsistency(0.2), 'inconsistent');
   });
+
+  // Sprint 3 — Barkjohn 5 µg/m³ near-zero guard regression
+  it('computeChannelConsistency: avg 3 µg/m³ (A=2, B=4) returns 1.0 under 5 µg/m³ guard', () => {
+    assert.equal(computeChannelConsistency(2, 4), 1.0);
+  });
+
+  it('computeChannelConsistency: avg 5.0 µg/m³ (A=3, B=7) engages ratio check', () => {
+    assert.ok(computeChannelConsistency(3, 7) < 1.0);
+  });
+
+  it('computeChannelConsistency: avg 4.9 µg/m³ returns 1.0 (just under guard)', () => {
+    // avg of 2.4 and 7.4 = 4.9 → under 5.0 guard
+    assert.equal(computeChannelConsistency(2.4, 7.4), 1.0);
+  });
 });
 
 // ============================================================================
@@ -1292,6 +1306,34 @@ describe('T3: Wildfire Cascade', () => {
     assert.equal(theatre.current_pct_exceeded, 0.4, '4/10 = 40% exceeded');
     assert.equal(theatre.outcome, 2, '40% falls in bucket 2 (30–50%)');
   });
+
+  // Sprint 3 — threshold and prior calibration regression
+  it('createWildfireCascade: default threshold_aqi is 151', () => {
+    const theatre = createWildfireCascade({ tracked_sensors: [] });
+    assert.equal(theatre.threshold_aqi, 151);
+  });
+
+  it('createWildfireCascade: default exceedance threshold is the start of Unhealthy, not 150', () => {
+    const theatre = createWildfireCascade({ tracked_sensors: [] });
+    assert.notEqual(theatre.threshold_aqi, 150, 'Must be 151 (start of Unhealthy), not 150');
+    assert.notEqual(theatre.threshold_aqi, 200, 'Must not be old default of 200');
+    assert.equal(theatre.threshold_aqi, 151);
+  });
+
+  it('createWildfireCascade: default prior is [0.40, 0.25, 0.15, 0.12, 0.08]', () => {
+    const theatre = createWildfireCascade({ tracked_sensors: [] });
+    assert.deepStrictEqual(theatre.bucket_probabilities, [0.40, 0.25, 0.15, 0.12, 0.08]);
+    assert.deepStrictEqual(
+      theatre.position_history[0].bucket_probabilities,
+      [0.40, 0.25, 0.15, 0.12, 0.08],
+    );
+  });
+
+  it('createWildfireCascade: default prior sums to 1.0', () => {
+    const theatre = createWildfireCascade({ tracked_sensors: [] });
+    const sum = theatre.bucket_probabilities.reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(sum - 1.0) < 1e-10, `Prior must sum to 1.0, got ${sum}`);
+  });
 });
 
 // ============================================================================
@@ -1481,6 +1523,59 @@ describe('BreathConstruct — integration', () => {
       initialHistoryLen + 1,
       'Only 1 new position_history entry — AirNow resolved first, PA bundle was ignored',
     );
+  });
+
+  // Sprint 3 — auto-spawn AQI floor regression
+  it('_checkAutoSpawn: does not spawn when AQI is 110 with rising trend of 25', () => {
+    const bc = new BreathConstruct({ pollIntervalMs: 1_000_000 });
+    const now = Date.now();
+    bc.sensorRegistry.sensors.set(1, {
+      sensor_index: 1,
+      name: 'Test',
+      location: { latitude: 37.7, longitude: -122.4, location_type: 0 },
+      location_stable: true,
+      pm25_history: [],
+      aqi_history: [
+        { t: now,                aqi: 110 },
+        { t: now - 30 * 60_000, aqi: 105 },
+        { t: now - 60 * 60_000, aqi: 85  },
+        { t: now - 90 * 60_000, aqi: 80  },
+      ],
+      last_seen: Math.floor(now / 1000),
+      state: 'active',
+      channel_consistency_score: 0.9,
+      nearby_agreement_count: 0,
+      _consistencyHistory: [],
+    });
+    bc._checkAutoSpawn();
+    assert.equal(bc.getActiveTheatres().length, 0,
+      'No T1 should spawn when AQI >= 100');
+  });
+
+  it('_checkAutoSpawn: spawns when AQI is 80 with rising trend of 25', () => {
+    const bc = new BreathConstruct({ pollIntervalMs: 1_000_000 });
+    const now = Date.now();
+    bc.sensorRegistry.sensors.set(1, {
+      sensor_index: 1,
+      name: 'Test',
+      location: { latitude: 37.7, longitude: -122.4, location_type: 0 },
+      location_stable: true,
+      pm25_history: [],
+      aqi_history: [
+        { t: now,                aqi: 80 },
+        { t: now - 30 * 60_000, aqi: 75 },
+        { t: now - 60 * 60_000, aqi: 55 },
+        { t: now - 90 * 60_000, aqi: 50 },
+      ],
+      last_seen: Math.floor(now / 1000),
+      state: 'active',
+      channel_consistency_score: 0.9,
+      nearby_agreement_count: 0,
+      _consistencyHistory: [],
+    });
+    bc._checkAutoSpawn();
+    assert.equal(bc.getActiveTheatres().length, 1,
+      'T1 should spawn when AQI < 100 and trend >= 20');
   });
 });
 

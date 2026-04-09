@@ -37,7 +37,8 @@ export function buildUncertainty(sensor, quality, theatreThreshold = null) {
   const consistency_class = classifyConsistency(consistency);
 
   // --- Base doubt by channel consistency ---
-  // TBD: empirical calibration needed — doubt prices are engineering estimates
+  // TBD: empirical calibration needed — base doubt prices by
+  // consistency class are engineering values
   let doubt_price;
   if (consistency_class === 'inconsistent') {
     // Channel A/B divergence too high — sensor is unreliable
@@ -129,7 +130,9 @@ export function buildAirNowUncertainty(theatreThreshold, currentAQI) {
  */
 export function thresholdCrossingProbability(aqi, threshold, doubt_price) {
   if (typeof aqi !== 'number' || !isFinite(aqi)) return 0.5; // maximum uncertainty
-  // TBD: empirical calibration needed — sigma range 5–60 is an engineering estimate
+  // source: corrected PurpleAir best-case RMSE is low, but true AQI-unit
+  // uncertainty is band-dependent; fixed sigma is an approximation.
+  // TBD: concentration-aware sigma model still needed.
   const sigma = 5 + doubt_price * 55;
   const z = (threshold - aqi) / sigma;
   return normalCDF(-z);

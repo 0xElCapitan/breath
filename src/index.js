@@ -719,7 +719,8 @@ export class BreathConstruct {
       if (record.state === 'dropout') continue;
 
       const trend = this.sensorRegistry.getAqiTrend(record.sensor_index, 2);
-      // TBD: empirical calibration needed — +20 AQI in 2h trigger is an engineering estimate
+      // TBD: empirical calibration needed — +20 AQI / 2h is directionally
+      // supported but not yet replay-calibrated across non-smoke conditions
       if (trend < 20) continue;
 
       const latestAqi = record.aqi_history?.[0]?.aqi;
@@ -727,6 +728,10 @@ export class BreathConstruct {
 
       const nextThreshold = getNextThreshold(latestAqi);
       if (nextThreshold === null) continue;
+
+      // TBD: empirical calibration needed — absolute floor prevents redundant
+      // spawn while already elevated; replay still needed for false-positive rate
+      if (latestAqi >= 100) continue;
 
       // Check if an open T1 already targets this threshold in this sensor's region
       const sensorBbox = this._sensorBbox(record);

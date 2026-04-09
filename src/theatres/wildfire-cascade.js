@@ -79,7 +79,11 @@ export function createWildfireCascade({
   wildfire_trigger = 'MANUAL',
   trigger_region = '',
   target_region,
-  threshold_aqi = 200,
+  // source: Camp Fire PurpleAir study (PMC7374346) + health-threshold alignment.
+  // Default set to the lower boundary of Unhealthy (AQI 151), which is more
+  // informative than AQI 200 for regional smoke events.
+  // TBD: historical replay needed across many events to confirm this default.
+  threshold_aqi = 151,
   tracked_sensors,
   window_hours = 24,
   base_rate = 0.20,
@@ -114,13 +118,23 @@ export function createWildfireCascade({
     position_history: [{
       t:                   now,
       p:                   base_rate,
-      bucket_probabilities: [0.2, 0.2, 0.2, 0.2, 0.2],
+      // source: inferred from Camp Fire PurpleAir evidence — low-exceedance
+      // outcomes appear more common than high-exceedance outcomes.
+      // Specific weights below are provisional working values, not final
+      // empirical truth. Historical replay across many events is still needed.
+      // TBD: empirical calibration needed.
+      bucket_probabilities: [0.40, 0.25, 0.15, 0.12, 0.08],
       evidence:            null,
-      reason:              `Base rate: uniform prior over ${WILDFIRE_BUCKETS.length} buckets`,
+      reason:              `Base rate: low-exceedance prior over ${WILDFIRE_BUCKETS.length} buckets`,
     }],
     current_position:     0,
     current_pct_exceeded: 0,
-    bucket_probabilities: [0.2, 0.2, 0.2, 0.2, 0.2],
+    // source: inferred from Camp Fire PurpleAir evidence — low-exceedance
+    // outcomes appear more common than high-exceedance outcomes.
+    // Specific weights below are provisional working values, not final
+    // empirical truth. Historical replay across many events is still needed.
+    // TBD: empirical calibration needed.
+    bucket_probabilities: [0.40, 0.25, 0.15, 0.12, 0.08],
     evidence_bundles:     [],
     resolving_bundle_id:  null,
     resolved_at:          null,

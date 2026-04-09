@@ -55,7 +55,7 @@ ecosystem:
 | T2 Sensor Divergence (self-resolving binary) | `src/theatres/sensor-divergence.js:31` |
 | T3 Wildfire Cascade (5-bucket multi-class) | `src/theatres/wildfire-cascade.js:75` |
 | RLMF certificate export with Brier scoring | `src/rlmf/certificates.js:162` |
-| Auto-spawn T1 on rising AQI trend (+20 in 2h) | `src/index.js:430` |
+| Auto-spawn T1 on rising AQI trend (+20 in 2h, only when current AQI < 100) | `src/index.js:717` |
 
 ---
 

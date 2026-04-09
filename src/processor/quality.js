@@ -41,15 +41,14 @@ export function computeChannelConsistency(pm25_a, pm25_b) {
 
   const avg = (pm25_a + pm25_b) / 2;
 
-  // Near-zero readings: tiny absolute differences become huge ratios.
-  // Below 2 µg/m³ the divergence ratio is not meaningful.
-  // TBD: empirical calibration needed — 2.0 µg/m³ is an engineering estimate
-  if (avg < 2.0) return 1.0;
+  // source: Barkjohn et al. 2021 (AMT 14:4617) — 5 µg/m³ absolute floor
+  // to avoid penalizing near-zero PMS5003 quantization noise
+  if (avg < 5.0) return 1.0;
 
   const divergenceRatio = Math.abs(pm25_a - pm25_b) / avg;
 
-  // Linear mapping: 0 divergence → score 1.0; divergenceRatio ≥ 0.7 → score 0.0
-  // source: engineering guess; PurpleAir community guidance suggests 0.7 as failure threshold
+  // source: Barkjohn et al. 2022 (PMC9784900) — 70% is the EPA hourly QC
+  // threshold used for Fire and Smoke Map handling
   return Math.max(0, 1 - divergenceRatio / 0.7);
 }
 
@@ -120,7 +119,7 @@ export function computeQuality(sensor, registryRecord, nearbySensors, nearbyAirN
   // --- density ---
   // Number of other active sensors within the density radius.
   // 10+ sensors = urban dense = score 1.0. Scales linearly below that.
-  // TBD: empirical calibration needed — 10 as urban-dense threshold is an estimate
+  // TBD: empirical calibration needed — 10-sensor density normalization
   const density = Math.min(1.0, nearbySensors.length / 10);
 
   // --- consistency ---
@@ -132,13 +131,14 @@ export function computeQuality(sensor, registryRecord, nearbySensors, nearbyAirN
   // EPA AirNow within ~20km agrees within 30% (or 15 AQI, whichever is larger).
   let cross_validated = false;
   if (nearbyAirNow && typeof nearbyAirNow.AQI === 'number' && typeof sensor.aqi_computed === 'number') {
-    // TBD: empirical calibration needed — 30% / 15 AQI tolerance is an engineering estimate
+    // TBD: empirical calibration needed — cross-validation tolerance
     const tolerance = Math.max(nearbyAirNow.AQI * 0.3, 15);
     cross_validated = Math.abs(sensor.aqi_computed - nearbyAirNow.AQI) <= tolerance;
   }
 
   // --- composite ---
-  // TBD: empirical calibration needed — weights are engineering estimates
+  // TBD: empirical calibration needed — quality weight allocation
+  // has no primary-source basis yet
   const raw = (
     source_tier * 0.35 +
     freshness   * 0.30 +

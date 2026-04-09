@@ -10,7 +10,7 @@ BREATH ingests real-time air quality data from PurpleAir's 30,000+ sensor networ
 
 ## Why air quality
 
-- **Ground truth oracle** — EPA AQI values are published hourly. `category_number >= threshold_category_number` closes the market. **Note:** AirNow current observations are preliminary data and may differ from final regulatory values in AQS/AirData. This is an explicit design choice: low-latency settlement over regulatory finality.
+- **Ground truth oracle** — BREATH uses AirNow current observations as its settlement authority for low-latency market resolution (`category_number >= threshold_category_number` closes the market). AirNow observations are **preliminary** — final regulatory data lives in AQS/AirData and may differ. Normal-condition drift between AirNow and AQS is likely modest but has not been directly quantified. This is an explicit product trust-policy choice: fast settlement over regulatory finality.
 - **Binary structure** — EPA AQI category breakpoints (51, 101, 151, 201, 301) create natural threshold gates. Every question has a crisp YES/NO resolution.
 - **Fast cycles** — AQI updates hourly. Theatres resolve in 4–72 hours. High-frequency RLMF data generation.
 - **Exogenous** — Predictions do not affect air quality. No reflexivity. Clean RLMF signal.
@@ -99,7 +99,7 @@ AirNow bundles are always processed **before** PurpleAir bundles in each poll cy
 |----------|------|----------------|--------|------------|
 | `aqi_threshold_gate` | Binary | Will AQI reach category X in region R? | 4–72h | EPA AirNow confirmation or expiry |
 | `sensor_divergence` | Binary | Will sensors A and B diverge by >N AQI for K consecutive readings? | 4–24h | Self-resolving (consecutive counter) or expiry |
-| `wildfire_cascade` | Multi-class (5 buckets) | What fraction of sensors will exceed AQI 200? | Up to 72h | `resolveWildfireCascade` at window close |
+| `wildfire_cascade` | Multi-class (5 buckets) | What fraction of sensors will exceed AQI 151? | Up to 72h | `resolveWildfireCascade` at window close |
 
 **Wildfire cascade buckets**: 0–10% | 10–30% | 30–50% | 50–70% | 70%+
 
@@ -115,13 +115,13 @@ AirNow bundles are always processed **before** PurpleAir bundles in each poll cy
 
 **AQI breakpoint discontinuities** — EPA breakpoint tables have a gap at category boundaries (e.g., PM2.5 12.0 = AQI 50, PM2.5 12.1 = AQI 51). BREATH uses `<=` on Chigh per the official formula. A PM2.5 of exactly 12.0 maps to AQI 50 (Good), not 51 (Moderate). Values are **truncated**, not rounded, per EPA specification.
 
-**Wildfire smoke transport lag** — Smoke plumes may take 2–12 hours to reach downwind sensors after ignition. T3 `window_hours` should be set generously (24–72h) to capture the full cascade arrival. The uniform prior `[0.2, 0.2, 0.2, 0.2, 0.2]` correctly reflects initial ignorance; bucket probabilities converge as sensors report.
+**Wildfire smoke transport lag** — Local and regional fires (under ~200 km) can reach downwind sensors in roughly 2–12 hours. Long-range transport events can take 12–72+ hours depending on atmospheric conditions. T3 `window_hours` should reflect the event type: 72h is reasonable for short long-range or snapshot-style events; regional fire sieges may need 72–168h. The low-exceedance prior `[0.40, 0.25, 0.15, 0.12, 0.08]` reflects the observation that low-exceedance outcomes are more common; bucket probabilities converge as sensors report.
 
 ---
 
 ## Settlement trust policy
 
-AirNow current observations are used as settlement authority for fast-cycle markets. These are **preliminary values** and may differ from final regulatory data in AQS/AirData. This is an explicit design choice: low-latency settlement over regulatory finality. If your use case requires final regulatory truth, implement a deferred reconciliation path against AQS.
+AirNow current observations are used as settlement authority for fast-cycle markets. These are **preliminary values** — AQS is the final regulatory system of record and may publish revised data. BREATH intentionally uses AirNow for low-latency settlement because market resolution speed matters more than regulatory finality for RLMF training. Normal-condition drift between AirNow preliminary and AQS final is likely modest, but has not been directly quantified in this construct. If your use case requires final regulatory truth, implement a deferred reconciliation path against AQS/AirData.
 
 ---
 
