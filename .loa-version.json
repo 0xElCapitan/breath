@@ -1,7 +1,7 @@
 {
-  "framework_version": "1.39.1",
+  "framework_version": "1.101.0",
   "schema_version": 2,
-  "last_sync": "2026-03-19T18:17:06Z",
+  "last_sync": "2026-04-20T16:55:12Z",
   "zones": {
     "system": ".claude",
     "state": ["grimoires/loa", ".beads"],
@@ -10,6 +10,6 @@
   "migrations_applied": ["001_init_zones"],
   "integrity": {
     "enforcement": "strict",
-    "last_verified": "2026-03-19T18:17:06Z"
+    "last_verified": "2026-04-20T16:55:12Z"
   }
 }

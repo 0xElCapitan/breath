@@ -5,3 +5,6 @@
 .claude/*
 !.claude/overrides/
 !.claude/settings.json
+
+# Loa disabled skills (feature-gated)
+.claude/.skills-disabled/
