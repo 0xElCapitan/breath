@@ -1,1 +1,16 @@
 .claude/.skills-disabled/
+
+# =============================================================================
+# LOA FRAMEWORK (vendored — don't track on GitHub)
+# .claude/overrides/ and .claude/settings.json remain tracked
+# =============================================================================
+.claude/skills/
+.claude/commands/
+.claude/scripts/
+.claude/protocols/
+.claude/hooks/
+.claude/lib/
+.claude/data/
+.claude/adapters/
+.claude/loa/
+.claude/constructs/
